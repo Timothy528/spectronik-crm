@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+<meta charset="utf-8">
+<style>
+:root{
+  --bg:#F4F6F8; --panel:#FFFFFF; --ink:#13202B; --muted:#5D6B78; --faint:#8A96A3; --line:#E2E7EC; --line2:#EEF1F4;
+  --accent:#0B6E79; --accent-ink:#095862; --accent-weak:#E2F1F2;
+  --amber:#9A5B00; --amber-bg:#FFF0D4; --green:#1D7A3B; --green-bg:#E2F3E7; --red:#B42318; --red-bg:#FDE9E7;
+  --slate:#3E5163; --slate-bg:#E8EDF2; --gray:#6B7682; --gray-bg:#EDEFF2;
+  --radius:10px; --shadow:0 1px 2px rgba(19,32,43,.06),0 1px 1px rgba(19,32,43,.04);
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:var(--accent);text-decoration:none;cursor:pointer} a:hover{text-decoration:underline}
+button{font:inherit;cursor:pointer}
+.mono{font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;font-size:12px}
+.muted{color:var(--muted)} .faint{color:var(--faint)} .small{font-size:12px} .right{text-align:right} .nowrap{white-space:nowrap}
+.hidden{display:none!important}
+
+/* Layout */
+.shell{display:grid;grid-template-columns:220px 1fr;min-height:100vh}
+.side{background:#0F2230;color:#C9D4DD;display:flex;flex-direction:column;padding:18px 12px;position:sticky;top:0;height:100vh}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 8px 18px;color:#fff;font-weight:700;letter-spacing:.2px}
+.brand .dot{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,#19A4B2,#0B6E79);display:grid;place-items:center;font-size:13px}
+.brand small{display:block;font-weight:500;color:#8FA3B3;font-size:11px}
+.nav a{display:flex;align-items:center;gap:10px;color:#C9D4DD;padding:9px 10px;border-radius:8px;margin-bottom:2px;font-weight:500}
+.nav a:hover{background:#18303F;text-decoration:none}
+.nav a.on{background:#1B3A4B;color:#fff}
+.nav svg{width:17px;height:17px;flex:none}
+.side .me{margin-top:auto;padding:12px 10px 0;border-top:1px solid #1E3646;font-size:12px}
+.side .me b{color:#fff;display:block;font-size:13px}
+.side .me a{color:#8FD3DA}
+.main{min-width:0}
+.cols>*,.kpis>*,.grid>*{min-width:0}
+.top{display:flex;gap:10px;align-items:center;padding:14px 26px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.search{flex:1;max-width:460px;position:relative}
+.search input{width:100%;padding:9px 12px 9px 34px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font:inherit}
+.search svg{position:absolute;left:10px;top:10px;width:16px;height:16px;color:var(--faint)}
+.search .results{position:absolute;top:42px;left:0;right:0;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.08);max-height:360px;overflow:auto}
+.search .results a{display:block;padding:9px 12px;color:var(--ink);border-bottom:1px solid var(--line2)}
+.search .results a:hover{background:var(--bg);text-decoration:none}
+.page{padding:22px 26px 60px;max-width:1320px}
+.ph{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.ph h1{font-size:22px;margin:0;letter-spacing:-.2px}
+.ph .sub{color:var(--muted);margin-top:3px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* Buttons & inputs */
+.btn{border:1px solid var(--line);background:#fff;color:var(--ink);padding:8px 13px;border-radius:8px;font-weight:500;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:#C7D0D8}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.pri:hover{background:var(--accent-ink)}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--accent)}
+.btn.danger{color:var(--red)}
+.btn.sm{padding:5px 9px;font-size:12px}
+.btn[disabled]{opacity:.55;cursor:not-allowed}
+label.f{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px}
+.in,select.in,textarea.in{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff;color:var(--ink)}
+.in:focus{outline:2px solid var(--accent-weak);border-color:var(--accent)}
+textarea.in{min-height:90px;resize:vertical}
+.grid{display:grid;gap:12px}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))} .g3{grid-template-columns:repeat(3,minmax(0,1fr))} .g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.span2{grid-column:span 2} .span3{grid-column:span 3} .spanall{grid-column:1/-1}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}
+.seg button{border:0;background:#fff;padding:6px 11px;font-size:12px;font-weight:600;color:var(--muted)}
+.seg button.on{background:var(--accent-weak);color:var(--accent-ink)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 11px;font-size:12px;font-weight:600;color:var(--muted)}
+.chip.on{background:var(--ink);border-color:var(--ink);color:#fff}
+
+/* Cards */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+.card>.hd{display:flex;justify-content:space-between;align-items:center;padding:13px 16px;border-bottom:1px solid var(--line2);gap:8px}
+.card>.hd h3{margin:0;font-size:14px}
+.card>.hd .note{font-size:12px;color:var(--muted)}
+.card>.bd{padding:14px 16px}
+.card>.bd.flush{padding:0}
+.kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-bottom:14px}
+.kpi{padding:14px 16px}
+.kpi .l{font-size:12px;color:var(--muted);font-weight:600;display:flex;gap:6px;align-items:center}
+.kpi .v{font-size:22px;font-weight:700;margin-top:6px;letter-spacing:-.3px;font-variant-numeric:tabular-nums}
+.kpi .s{font-size:12px;color:var(--muted);margin-top:2px}
+.kpi.accent{border-top:3px solid var(--accent)}
+.kpi.green{border-top:3px solid var(--green)} .kpi.amber{border-top:3px solid #E39B1B} .kpi.red{border-top:3px solid var(--red)}
+.cols{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:14px;margin-bottom:14px}
+.cols.even{grid-template-columns:repeat(2,minmax(0,1fr))}
+.alert{border:1px solid #F1D49B;background:#FFF8EA;color:#6B4600;border-radius:8px;padding:9px 12px;margin-bottom:14px;font-size:13px}
+.alert.info{border-color:#BFE0E3;background:#F0F8F9;color:#0B4E56}
+
+/* Tables */
+table.t{width:100%;border-collapse:collapse}
+.t th{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--faint);font-weight:600;text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);background:#FAFBFC;white-space:nowrap}
+.t td{padding:9px 12px;border-bottom:1px solid var(--line2);vertical-align:top}
+.t tr:last-child td{border-bottom:0}
+.t tbody tr.click{cursor:pointer} .t tbody tr.click:hover td{background:#F7F9FA}
+.t td.num,.t th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tablewrap{overflow-x:auto}
+
+/* Badges */
+.b{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap;background:var(--gray-bg);color:var(--gray)}
+.b.st-Enquiry,.b.st-Price{background:var(--slate-bg);color:var(--slate)}
+.b.st-Engaged{background:#DFEAF5;color:#25507A}
+.b.st-Formal{background:#DCE6FB;color:#2B4CA0}
+.b.st-Awaiting{background:var(--amber-bg);color:var(--amber)}
+.b.st-PO,.b.st-Paid{background:var(--green-bg);color:var(--green)}
+.b.st-Lost{background:var(--red-bg);color:var(--red)}
+.b.st-Dormant{background:var(--gray-bg);color:var(--gray);font-style:italic}
+.b.pay-Paid{background:var(--green-bg);color:var(--green)} .b.pay-Partial{background:var(--amber-bg);color:var(--amber)} .b.pay-Unpaid{background:var(--red-bg);color:var(--red)}
+.b.dir-in{background:var(--accent-weak);color:var(--accent-ink)}
+.b.dir-out{background:var(--green-bg);color:var(--green)}
+.b.dir-int{background:var(--amber-bg);color:var(--amber)}
+.b.tier{background:var(--ink);color:#fff;min-width:22px;justify-content:center}
+.b.tier-—{background:var(--gray-bg);color:var(--gray)}
+.b.key{background:#FFF4CC;color:#7A5A00}
+.b.out{background:#fff;border:1px solid var(--line);color:var(--muted)}
+.star{color:#D99A00}
+
+/* Bars */
+.bar{height:8px;background:var(--line2);border-radius:99px;overflow:hidden;min-width:60px}
+.bar>i{display:block;height:100%;background:var(--accent);border-radius:99px}
+.bar.green>i{background:var(--green)}
+.money{display:grid;grid-template-columns:auto 1fr 1fr;gap:0;font-size:13px}
+.money>div{padding:12px 14px;border-bottom:1px solid var(--line2);border-right:1px solid var(--line2)}
+.money .h{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--faint);font-weight:600;background:#FAFBFC}
+.money .v{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
+.money .good{background:#F4FBF6} .money .warn{background:#FFFAF0} .money .bad{background:#FFF6F5}
+
+/* Detail */
+.dhead{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap;margin-bottom:14px}
+.dhead h1{font-size:22px;margin:4px 0 6px;letter-spacing:-.2px}
+.dl{display:grid;grid-template-columns:140px 1fr;gap:7px 12px;font-size:13px}
+.dl dt{color:var(--muted)} .dl dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.stepper{display:flex;gap:4px;margin:4px 0 14px}
+.stepper div{flex:1;height:6px;border-radius:99px;background:var(--line)}
+.stepper div.done{background:var(--accent)} .stepper div.now{background:#E39B1B}
+.stepper.won div.done,.stepper.won div.now{background:var(--green)}
+.stepper.lost div.done,.stepper.lost div.now{background:var(--red)}
+.stepl{display:flex;justify-content:space-between;font-size:11px;color:var(--faint);margin-top:-8px;margin-bottom:12px}
+
+/* Timeline */
+.tl{position:relative}
+.tl .it{display:grid;grid-template-columns:28px 1fr;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line2)}
+.tl .it:last-child{border-bottom:0}
+.tl .ic{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--accent-weak);color:var(--accent-ink);font-size:12px;font-weight:700}
+.tl .ic.out{background:var(--green-bg);color:var(--green)}
+.tl .ic.nxt{background:var(--amber-bg);color:var(--amber)}
+.tl .ic.pay{background:var(--green-bg);color:var(--green)} .tl .ic.stg{background:var(--slate-bg);color:var(--slate)}
+.tl .meta{font-size:12px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.tl .sum{font-weight:600;margin:2px 0}
+.tl .nxtbox{margin-top:6px;padding:6px 10px;border-radius:7px;background:var(--amber-bg);color:var(--amber);font-size:12px;display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap}
+.tl pre{white-space:pre-wrap;word-break:break-word;font:13px/1.5 Inter,system-ui,sans-serif;background:#FAFBFC;border:1px solid var(--line2);border-radius:8px;padding:10px 12px;margin:8px 0 0;max-height:420px;overflow:auto;color:#24323F}
+.composer{padding:14px 16px;border-bottom:1px solid var(--line);background:#FBFCFD;border-radius:var(--radius) var(--radius) 0 0}
+
+/* Modal */
+.ov{position:fixed;inset:0;background:rgba(15,34,48,.45);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;z-index:50;overflow:auto}
+.modal{background:#fff;border-radius:12px;width:100%;max-width:760px;box-shadow:0 20px 50px rgba(0,0,0,.25)}
+.modal .mh{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--line)}
+.modal .mh h2{margin:0;font-size:17px}
+.modal .mb{padding:18px 20px}
+.modal .mf{display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--line);background:#FAFBFC;border-radius:0 0 12px 12px}
+.x{border:0;background:none;font-size:22px;line-height:1;color:var(--muted)}
+.err{color:var(--red);font-size:13px;margin-right:auto;align-self:center}
+.items td{padding:5px 4px} .items .in{padding:6px 8px}
+.sect{font-size:11px;text-transform:uppercase;letter-spacing:.5px;font-weight:700;color:var(--faint);margin:6px 0 -2px}
+
+/* Toast & loading */
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:8px;font-weight:500;opacity:0;transition:.2s;pointer-events:none;z-index:99}
+#toast.on{opacity:1}
+.loading{position:fixed;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,transparent,var(--accent),transparent);background-size:50% 100%;animation:ld 1s linear infinite;z-index:100}
+@keyframes ld{from{background-position:-50% 0}to{background-position:150% 0}}
+.empty{padding:28px 16px;text-align:center;color:var(--muted)}
+
+/* Login */
+.login{min-height:100vh;display:grid;place-items:center;padding:20px;background:radial-gradient(1200px 600px at 20% -10%,#DDEFF1,transparent),var(--bg)}
+.login .box{width:100%;max-width:380px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:28px;box-shadow:0 10px 30px rgba(15,34,48,.08)}
+.login h1{font-size:20px;margin:14px 0 4px}
+.pin{letter-spacing:8px;font-size:20px;text-align:center;font-family:"JetBrains Mono",monospace}
+
+@media (max-width:1100px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.cols,.cols.even{grid-template-columns:1fr}}
+@media (max-width:820px){
+  .shell{grid-template-columns:minmax(0,1fr)}
+  .t th,.t td{padding:8px 8px}
+  .search{min-width:0}
+  .side{position:static;height:auto;flex-direction:row;align-items:center;padding:8px 12px;gap:6px;overflow-x:auto}
+  .brand{padding:0 8px 0 0}.brand small{display:none}
+  .nav{display:flex;gap:2px}.nav a{padding:7px 9px;margin:0}.nav a span{display:none}
+  .side .me{margin:0 0 0 auto;border:0;padding:0;white-space:nowrap}.side .me b,.side .me .ver{display:none}
+  .top{padding:10px 16px;position:static}.page{padding:16px 16px 50px}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .g2,.g3,.g4{grid-template-columns:1fr}.span2,.span3{grid-column:auto}
+  .dl{grid-template-columns:110px 1fr}
+}
+</style>
+</head>
+<body>
+<script>
+/* ===== Option 2 setting — the only line to change =====
+   Paste your Apps Script web app link (Deploy > Manage deployments, ends in /exec). */
+window.CRM_API_URL = 'https://script.google.com/macros/s/AKfycbxajDpngogll-tK0Ws-vERg5b6VdPelAdiSBLVm9ywEv3dJuatPZRUiVdEMhNnD4bOjSQ/exec';
+</script>
+<div id="app"></div>
+<div id="modal"></div>
+<div id="toast"></div>
+<div id="loading" class="loading hidden"></div>
+<script>
+/* ======================= Runtime bridge ======================= */
+const S = { token: null, boot: null, dispCcy: 'SGD', cache: {}, filters: { deals: { stage: 'open', brand: '', q: '' }, customers: { q: '', seg: '', tier: '', key: false } } };
+function store(k, v) { try { if (v === undefined) return sessionStorage.getItem(k); if (v === null) sessionStorage.removeItem(k); else sessionStorage.setItem(k, v); } catch (e) { return null; } }
+let busy = 0;
+function setBusy(d) { busy += d; document.getElementById('loading').classList.toggle('hidden', busy <= 0); }
+/* Option 2 — hosted page: when this file is served outside Apps Script (no google.script), talk to the
+   Apps Script web app by fetch. CRM_API_URL is set in the hosted copy. Inside Apps Script this does nothing. */
+(function () {
+  if (typeof google !== 'undefined' && google.script && google.script.run) return;
+  const url = window.CRM_API_URL;
+  const make = (ok, bad) => new Proxy({}, {
+    get(_, name) {
+      if (name === 'withSuccessHandler') return f => make(f, bad);
+      if (name === 'withFailureHandler') return f => make(ok, f);
+      return (...args) => {
+        if (!url || /PASTE/.test(url)) { bad && bad(new Error('CRM_API_URL is not set in this page.')); return; }
+        fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: name, args }), redirect: 'follow', credentials: 'omit' })
+          .then(r => { if (!r.ok) throw new Error('Server error ' + r.status); return r.text(); })
+          .then(t => ok && ok(t))
+          .catch(e => bad && bad(new Error('Cannot reach the CRM server (' + e.message + '). Check your internet connection.')));
+      };
+    }
+  });
+  window.google = { script: {
+    run: make(null, null),
+    history: {
+      push(state, q, hash) { try { history.pushState(state, '', '#' + hash); } catch (e) { } },
+      setChangeHandler(fn) { window.addEventListener('popstate', e => fn({ state: e.state, location: { hash: location.hash.replace(/^#/, '') } })); }
+    }
+  } };
+  if (location.hash.length > 1) S.route = location.hash.replace(/^#\/?/, '');
+})();
+function gs(fn, ...args) {
+  return new Promise((res, rej) => {
+    setBusy(1);
+    google.script.run
+      .withSuccessHandler(r => { setBusy(-1); try { res(JSON.parse(r)); } catch (e) { rej(e); } })
+      .withFailureHandler(e => { setBusy(-1); rej(e); })[fn](...args);
+  });
+}
+async function call(action, data) {
+  const r = await gs('api', JSON.stringify({ token: S.token, action, data }));
+  if (!r.ok) {
+    if (r.error === 'SESSION_EXPIRED') { logout(true); throw new Error('Session expired — please log in again.'); }
+    throw new Error(r.error);
+  }
+  if (r.boot) S.boot = r.boot;
+  return r.data;
+}
+
+/* ======================= Helpers ======================= */
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '\x26amp;', '<': '\x26lt;', '>': '\x26gt;', '"': '\x26quot;', "'": '\x26#39;' }[c]));
+const nf0 = new Intl.NumberFormat('en-SG', { maximumFractionDigits: 0 });
+const nf2 = new Intl.NumberFormat('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function money(v, ccy, dp) { if (v === '' || v == null || isNaN(v)) return '—'; return (ccy ? ccy + ' ' : '') + (dp === 0 ? nf0 : nf2).format(v); }
+function disp(sgd) {
+  if (S.dispCcy === 'SGD') return money(sgd, 'SGD', 0);
+  const r = S.boot.config.fx[S.dispCcy]; return r ? money(sgd / r, S.dispCcy, 0) : '—';
+}
+function fdate(d) { if (!d) return '—'; const s = String(d).slice(0, 10); const [y, m, dd] = s.split('-'); if (!dd) return esc(d); const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m - 1]; return `${+dd} ${mo} ${y}`; }
+/* Next-action times are stored in the system time zone (Singapore). People type and read them in their own time zone. */
+function sysOffMin() { const z = String((S.boot && S.boot.config.sysOffset) || '+0800'); return (z[0] === '-' ? -1 : 1) * (parseInt(z.slice(1, 3), 10) * 60 + parseInt(z.slice(3, 5), 10)); }
+const p2 = n => String(n).padStart(2, '0');
+function sysToMs(d) { const s = String(d || '').replace('T', ' ').trim(); const m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2}))?/); if (!m) return null; return Date.UTC(+m[1], +m[2] - 1, +m[3], m[4] ? +m[4] : 9, m[5] ? +m[5] : 0) - sysOffMin() * 60000; }
+function localToSys(v) { if (!v) return ''; const ms = new Date(v).getTime(); if (isNaN(ms)) return ''; const t = new Date(ms + sysOffMin() * 60000); return `${t.getUTCFullYear()}-${p2(t.getUTCMonth() + 1)}-${p2(t.getUTCDate())} ${p2(t.getUTCHours())}:${p2(t.getUTCMinutes())}`; }
+function myTzLabel() { try { const p = new Intl.DateTimeFormat('en', { timeZoneName: 'short' }).formatToParts(new Date()).find(x => x.type === 'timeZoneName'); return p ? p.value : ''; } catch (e) { return ''; } }
+function fdt(d) {
+  if (!d) return '—';
+  const s = String(d).replace('T', ' ').trim();
+  if (s.length < 16) return fdate(s.slice(0, 10));
+  const ms = sysToMs(s); if (ms == null) return esc(s);
+  const t = new Date(ms);
+  return `${fdate(`${t.getFullYear()}-${p2(t.getMonth() + 1)}-${p2(t.getDate())}`)}, ${p2(t.getHours())}:${p2(t.getMinutes())} <span class="faint small">${esc(myTzLabel())}</span>`;
+}
+function toDtInput(d) {
+  const ms = sysToMs(d); if (ms == null) return '';
+  const t = new Date(ms);
+  return `${t.getFullYear()}-${p2(t.getMonth() + 1)}-${p2(t.getDate())}T${p2(t.getHours())}:${p2(t.getMinutes())}`;
+}
+function ago(days) { if (days == null) return '—'; if (days <= 0) return 'today'; if (days === 1) return '1 day ago'; return days + ' days ago'; }
+function stageKey(s) { return String(s || '').split(' ')[0]; }
+function stageBadge(s) { return `<span class="b st-${esc(stageKey(s))}">${esc(s)}</span>`; }
+function payBadge(s) { return s && s !== '—' ? `<span class="b pay-${esc(s)}">${esc(s)}</span>` : '<span class="faint">—</span>'; }
+function payFor(d) { return (d.won || d.paidCcy > 0) ? payBadge(d.payStatus) : '<span class="faint">—</span>'; }
+function tierBadge(t) { return `<span class="b tier tier-${esc(t)}" title="Value tier (paid + weighted open value)">${esc(t)}</span>`; }
+function dirBadge(dir, tp) {
+  if (tp === 'Next action' || dir === 'Internal') return '<span class="b dir-int">⏰ Internal / Next action</span>';
+  if (dir === 'To customer') return '<span class="b dir-out">↗ To customer</span>';
+  return '<span class="b dir-in">↙ From customer</span>';
+}
+function methodList() {
+  const raw = list('ActivityType');
+  const clean = ['Email', 'WhatsApp', 'Call / Zoom', 'Meeting / visit', 'Quotation', 'Proforma / invoice', 'Note'];
+  raw.forEach(x => {
+    if (!/^(email in|email out|quotation sent|proforma \/ invoice sent|next action)$/i.test(x) && !clean.includes(x)) clean.push(x);
+  });
+  return clean;
+}
+function cust(id) { return S.boot.customers.find(c => c.CustomerID === id) || null; }
+function custName(id) { const c = cust(id); return c ? c.Name : (id || '—'); }
+function contact(id) { return S.boot.contacts.find(c => c.ContactID === id) || null; }
+function deal(id) { return S.boot.deals.find(d => d.DealID === id) || null; }
+function product(code) { return S.boot.config.products.find(p => p.code === code) || null; }
+function list(name) { return S.boot.config.lists[name] || []; }
+function opts(arr, sel, blank) { return (blank !== undefined ? `<option value="">${esc(blank)}</option>` : '') + arr.map(v => { const val = typeof v === 'object' ? v.v : v; const lab = typeof v === 'object' ? v.l : v; return `<option value="${esc(val)}"${String(val) === String(sel) ? ' selected' : ''}>${esc(lab)}</option>`; }).join(''); }
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), 3200); }
+function can(role) { const r = { Viewer: 1, Editor: 2, Admin: 3 }; return (r[S.boot.me.role] || 0) >= r[role]; }
+function go(hash) {
+  S.route = String(hash).replace(/^#\/?/, '') || 'dashboard';
+  try { if (google.script.history) google.script.history.push({ r: S.route }, null, S.route); } catch (e) { }
+  if (S.boot) route();
+}
+function fail(e) { toast(e && e.message ? e.message : String(e)); }
+const ICON = {
+  dash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>',
+  cust: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21V7l9-4 9 4v14"/><path d="M9 21v-6h6v6"/><path d="M8 10h.01M12 10h.01M16 10h.01"/></svg>',
+  deal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h6"/><circle cx="18" cy="16" r="3"/></svg>',
+  set: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+  search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>'
+};
+
+/* ======================= Login ======================= */
+async function start() {
+  try {
+    if (typeof google !== 'undefined' && google.script && google.script.history) {
+      google.script.history.setChangeHandler(e => { S.route = (e.state && e.state.r) || e.location.hash || 'dashboard'; if (S.boot) route(); });
+    }
+  } catch (e) { }
+  S.token = store('crm_token');
+  if (S.token) {
+    try { const r = await gs('api', JSON.stringify({ token: S.token, action: 'bootstrap' })); if (r.ok) { S.boot = r.data; return route(); } } catch (e) { }
+    store('crm_token', null); S.token = null;
+  }
+  showLogin();
+}
+async function showLogin(msg) {
+  $('#app').innerHTML = `<div class="login"><div class="box">
+    <div class="brand" style="color:var(--ink);padding:0"><div class="dot" style="color:#fff">S</div><div>Spectronik CRM<small style="color:var(--muted)">Spectronik · Area65</small></div></div>
+    <h1>Sign in</h1><div class="muted small" style="margin-bottom:18px">Pick your name and enter your 6-digit PIN.</div>
+    <div id="lg-body"><div class="muted">Loading…</div></div></div></div>`;
+  try {
+    const r = await gs('loginOptions');
+    if (!r.ok) { $('#lg-body').innerHTML = `<div class="alert">${esc(r.error)}</div>`; return; }
+    if (!r.users.length) { $('#lg-body').innerHTML = `<div class="alert info">No users yet. In the Google Sheet, run <b>CRM → Add or reset a user</b> to create the first Admin.</div>`; return; }
+    $('#lg-body').innerHTML = `
+      <label class="f">Name</label><select id="lg-u" class="in">${opts(r.users.map(u => ({ v: u.id, l: u.name })), store('crm_last_user'))}</select>
+      <label class="f" style="margin-top:12px">PIN</label><input id="lg-p" class="in pin" type="password" inputmode="numeric" maxlength="6" autocomplete="off">
+      <div id="lg-err" class="err" style="margin-top:10px">${esc(msg || '')}</div>
+      <button id="lg-go" class="btn pri" style="width:100%;justify-content:center;margin-top:12px">Sign in</button>
+      <div class="faint small" style="margin-top:14px;text-align:center">v${esc(r.version)}</div>`;
+    const submit = async () => {
+      const u = $('#lg-u').value, p = $('#lg-p').value.trim();
+      if (!/^\d{6}$/.test(p)) { $('#lg-err').textContent = 'PIN is 6 digits.'; return; }
+      $('#lg-go').disabled = true;
+      try {
+        const res = await gs('login', u, p);
+        if (!res.ok) { $('#lg-err').textContent = res.error; $('#lg-go').disabled = false; return; }
+        S.token = res.token; store('crm_token', S.token); store('crm_last_user', u);
+        S.boot = res.boot; route();
+      } catch (e) { $('#lg-err').textContent = e.message || e; $('#lg-go').disabled = false; }
+    };
+    $('#lg-go').onclick = submit; $('#lg-p').onkeydown = e => { if (e.key === 'Enter') submit(); };
+    $('#lg-p').focus();
+  } catch (e) { $('#lg-body').innerHTML = `<div class="alert">${esc(e.message || e)}</div>`; }
+}
+function logout(expired) { store('crm_token', null); S.token = null; S.boot = null; S.cache = {}; closeModal(); showLogin(expired ? 'Session expired — please sign in again.' : ''); }
+
+/* ======================= Shell & routing ======================= */
+function shell(active, inner) {
+  const me = S.boot.me;
+  return `<div class="shell"><aside class="side">
+    <div class="brand"><div class="dot">S</div><div>Spectronik CRM<small>Spectronik · Area65</small></div></div>
+    <nav class="nav">
+      <a class="${active === 'dash' ? 'on' : ''}" onclick="go('#/dashboard')">${ICON.dash}<span>Dashboard</span></a>
+      <a class="${active === 'cust' ? 'on' : ''}" onclick="go('#/customers')">${ICON.cust}<span>Customers</span></a>
+      <a class="${active === 'deal' ? 'on' : ''}" onclick="go('#/deals')">${ICON.deal}<span>Deals</span></a>
+      <a class="${active === 'set' ? 'on' : ''}" onclick="go('#/settings')">${ICON.set}<span>Settings</span></a>
+    </nav>
+    <div class="me"><b>${esc(me.name)}</b><span class="ver">${esc(me.role)} · v${esc(S.boot.version)}<br></span><a onclick="logout()">Sign out</a></div>
+  </aside><div class="main">
+    <div class="top"><div class="search">${ICON.search}<input id="gsearch" placeholder="Search customers, deals, IDs…" autocomplete="off"><div id="gres" class="results hidden"></div></div>
+      <div style="margin-left:auto" class="row">${can('Editor') ? `<button class="btn" onclick="customerForm()">+ Customer</button><button class="btn pri" onclick="dealForm()">+ Deal</button>` : '<span class="b out">Read-only</span>'}</div></div>
+    <div class="page">${inner}</div></div></div>`;
+}
+function wireSearch() {
+  const inp = $('#gsearch'), box = $('#gres'); if (!inp) return;
+  inp.oninput = () => {
+    const q = inp.value.trim().toLowerCase(); if (q.length < 2) { box.classList.add('hidden'); return; }
+    const cs = S.boot.customers.filter(c => (c.Name + ' ' + c.CustomerID + ' ' + c.Country).toLowerCase().includes(q)).slice(0, 6);
+    const ct = S.boot.contacts.filter(c => (c.Name + ' ' + c.Email).toLowerCase().includes(q)).slice(0, 4);
+    const ds = S.boot.deals.filter(d => (d.Title + ' ' + d.DealID + ' ' + custName(d.CustomerID)).toLowerCase().includes(q)).slice(0, 6);
+    box.innerHTML = cs.map(c => `<a onclick="go('#/customer/${c.CustomerID}')"><span class="mono faint">${c.CustomerID}</span>  ${esc(c.Name)} <span class="faint small">· ${esc(c.Country)}</span></a>`).join('')
+      + ct.map(c => `<a onclick="go('#/customer/${c.CustomerID}')"><span class="faint small">Contact</span>  ${esc(c.Name)} <span class="faint small">· ${esc(custName(c.CustomerID))}</span></a>`).join('')
+      + ds.map(d => `<a onclick="go('#/deal/${d.DealID}')"><span class="mono faint">${d.DealID}</span>  ${esc(d.Title)} <span class="faint small">· ${esc(custName(d.CustomerID))}</span></a>`).join('')
+      || '<div class="empty">No match</div>';
+    box.classList.remove('hidden');
+  };
+  inp.onblur = () => setTimeout(() => box.classList.add('hidden'), 200);
+}
+function route() {
+  const h = S.route || 'dashboard';
+  const [p, id] = h.split('/');
+  try {
+    if (p === 'customers') viewCustomers();
+    else if (p === 'customer') viewCustomer(id);
+    else if (p === 'deals') viewDeals();
+    else if (p === 'deal') viewDeal(id);
+    else if (p === 'settings') viewSettings();
+    else viewDashboard();
+  } catch (e) { console.error(e); fail(e); }
+  wireSearch();
+  window.scrollTo(0, 0);
+}
+function rerender() { const y = window.scrollY; route(); window.scrollTo(0, y); }
+
+/* ======================= Dashboard ======================= */
+function viewDashboard() {
+  const D = S.boot.dashboard, cfg = S.boot.config;
+  const usdOk = !!cfg.fx.USD;
+  const maxW = Math.max(1, ...D.pipeline.map(p => p.weightedSGD));
+  const pipeRows = D.pipeline.map(p => `<tr>
+    <td>${stageBadge(p.stage)}</td><td class="num">${p.count}${p.missingValue ? ` <span class="b st-Awaiting" title="Deals without a value">${p.missingValue} no value</span>` : ''}</td>
+    <td class="num">${disp(p.openSGD)}</td><td class="num">${p.prob}%</td>
+    <td class="num"><b>${disp(p.weightedSGD)}</b></td>
+    <td style="width:18%"><div class="bar"><i style="width:${(p.weightedSGD / maxW * 100).toFixed(1)}%"></i></div></td>
+    <td class="num">${p.actualWin == null ? '<span class="faint">—</span>' : `${p.actualWin}% <span class="faint small">(n=${p.actualN})</span>`}</td></tr>`).join('');
+  const m = D.money;
+  const winTable = (rows, label) => rows.length ? `<table class="t"><thead><tr><th>${label}</th><th class="num" title="Won / lost or dormant / still open">Won · lost · open</th><th>Win rate</th><th class="num">Won value</th></tr></thead><tbody>${rows.map(r => `<tr>
+    <td>${esc(r.key)}</td><td class="num">${r.won} · ${r.lost + r.dormant} · ${r.open}</td>
+    <td style="min-width:110px">${r.winRate == null ? '<span class="faint small">none decided yet</span>' : `<div class="row" style="flex-wrap:nowrap"><div class="bar green" style="flex:1"><i style="width:${r.winRate}%"></i></div><b class="small">${r.winRate}%</b></div>${r.small ? `<div class="faint small">n=${r.decided}, too few</div>` : ''}`}</td>
+    <td class="num">${disp(r.wonSGD)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No deals yet.</div>';
+  const prodRows = D.products.map(p => { const pr = product(p.code); const conv = (p.wonQty + p.lostQty) ? Math.round(p.wonQty / (p.wonQty + p.lostQty) * 100) + '%' : '—'; return `<tr><td><span class="mono">${esc(p.code)}</span> <span class="muted small">${esc(pr ? pr.name : '')}</span></td><td class="num">${p.deals}</td><td class="num">${p.enquiredQty}</td><td class="num"><b>${p.wonQty}</b></td><td class="num">${p.openQty}</td><td class="num">${p.lostQty}</td><td class="num">${conv}</td></tr>`; }).join('');
+  const follow = D.followUps.map(f => `<tr class="click" onclick="go('#/deal/${f.DealID}')"><td class="nowrap ${f.overdue ? '' : 'muted'}" style="${f.overdue ? 'color:var(--red);font-weight:600' : ''}">${fdt(f.date)}</td><td><b>${esc(f.customer)}</b><div class="small muted">${esc(f.next || f.title)}${f.by ? ' · ' + esc(f.by) : ''}</div></td></tr>`).join('');
+  const lost = Object.entries(D.lostReasons).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div class="row" style="justify-content:space-between;padding:4px 0"><span>${esc(k)}</span><b>${v}</b></div>`).join('') || '<div class="faint small">No lost deals recorded yet.</div>';
+
+  $('#app').innerHTML = shell('dash', `
+    <div class="ph"><div><h1>Dashboard</h1><div class="sub">Revenue counts when money is received. Pipeline probabilities are <b>assumptions</b> until real win rates replace them.</div></div>
+      <div class="row"><span class="small muted">Show in</span><div class="seg"><button class="${S.dispCcy === 'SGD' ? 'on' : ''}" onclick="S.dispCcy='SGD';rerender()">SGD</button>${usdOk ? `<button class="${S.dispCcy === 'USD' ? 'on' : ''}" onclick="S.dispCcy='USD';rerender()">USD</button>` : ''}</div></div></div>
+    ${D.missingValueCount ? `<div class="alert"><b>${D.missingValueCount} open deal(s) have no value.</b> The weighted pipeline is understated until a value is entered. <a onclick="S.filters.deals={stage:'novalue',brand:'',q:''};go('#/deals')">Show them</a></div>` : ''}
+    ${S.dispCcy !== 'SGD' ? `<div class="alert info">Shown in ${S.dispCcy} by converting SGD at today's rate (${cfg.fx[S.dispCcy]} SGD per ${S.dispCcy}). Paid revenue was received in SGD.</div>` : ''}
+    <div class="kpis">
+      <div class="card kpi green"><div class="l">Revenue received ${D.year}</div><div class="v">${disp(D.revenueYTD)}</div><div class="s">All time ${disp(D.revenueAll)}</div></div>
+      <div class="card kpi"><div class="l">PO received, awaiting payment</div><div class="v">${disp(m.unpaidNotDelivered)}</div><div class="s">${m.counts.unpaidNotDelivered} deal(s) — order book</div></div>
+      <div class="card kpi amber"><div class="l">Paid, not delivered</div><div class="v">${disp(m.paidNotDelivered)}</div><div class="s">${m.counts.paidNotDelivered} deal(s) — we owe goods</div></div>
+      <div class="card kpi ${m.unpaidDelivered > 0 ? 'red' : ''}"><div class="l">Delivered, not paid</div><div class="v">${disp(m.unpaidDelivered)}</div><div class="s">${m.counts.unpaidDelivered} deal(s) — collect payment</div></div>
+      <div class="card kpi accent"><div class="l">Weighted pipeline</div><div class="v">${disp(D.pipelineWeightedSGD)}</div><div class="s">of ${disp(D.pipelineTotalSGD)} open</div></div>
+      <div class="card kpi"><div class="l">Open deals</div><div class="v">${D.openCount}</div><div class="s" style="${D.overdueCount ? 'color:var(--red);font-weight:600' : ''}">${D.overdueCount} follow-up(s) overdue</div></div>
+    </div>
+    <div class="cols">
+      <div class="card"><div class="hd"><h3>Pipeline by stage</h3><span class="note">Weighted = open value × probability</span></div><div class="bd flush tablewrap">
+        <table class="t"><thead><tr><th>Stage</th><th class="num">Deals</th><th class="num">Open value</th><th class="num">Assumed %</th><th class="num">Weighted</th><th></th><th class="num" title="Of decided deals that reached this stage, % that were won">Actual win %</th></tr></thead><tbody>${pipeRows}</tbody></table></div></div>
+      <div class="card"><div class="hd"><h3>Next follow-ups</h3><span class="note">Red = overdue</span></div><div class="bd flush">${follow ? `<table class="t"><tbody>${follow}</tbody></table>` : '<div class="empty">No follow-ups scheduled.</div>'}</div></div>
+    </div>
+    <div class="cols even">
+      <div class="card"><div class="hd"><h3>Money position — won deals</h3><span class="note">Paid = SGD actually received</span></div><div class="bd flush">
+        <table class="t"><tbody>
+          <tr><td><span class="b st-Awaiting">1 · PO received, not paid</span><div class="small muted" style="margin-top:4px">Waiting for the customer's payment</div></td><td class="num"><b>${disp(m.unpaidNotDelivered)}</b><div class="small muted">${m.counts.unpaidNotDelivered} deal(s)</div></td></tr>
+          <tr><td><span class="b st-Formal">2 · Paid, not delivered</span><div class="small muted" style="margin-top:4px">We owe goods — ship</div></td><td class="num"><b>${disp(m.paidNotDelivered)}</b><div class="small muted">${m.counts.paidNotDelivered} deal(s)</div></td></tr>
+          <tr><td><span class="b st-Paid">3 · Paid and delivered</span><div class="small muted" style="margin-top:4px">Done</div></td><td class="num"><b>${disp(m.paidDelivered)}</b><div class="small muted">${m.counts.paidDelivered} deal(s)</div></td></tr>
+          <tr><td><span class="b st-Lost">4 · Delivered, not paid</span><div class="small muted" style="margin-top:4px">Goods shipped, payment still due</div></td><td class="num"><b>${disp(m.unpaidDelivered)}</b><div class="small muted">${m.counts.unpaidDelivered} deal(s)</div></td></tr>
+        </tbody></table>
+        </div></div>
+      <div class="card"><div class="hd"><h3>Why deals are lost</h3><span class="note">Feeds the pricing question</span></div><div class="bd">${lost}</div></div>
+    </div>
+    <div class="cols even">
+      <div class="card"><div class="hd"><h3>Win rate by lead source</h3><span class="note">Lost + dormant count as not won</span></div><div class="bd flush tablewrap">${winTable(D.bySource, 'Source')}</div></div>
+      <div class="card"><div class="hd"><h3>Win rate by customer segment</h3></div><div class="bd flush tablewrap">${winTable(D.bySegment, 'Segment')}</div></div>
+    </div>
+    <div class="cols even">
+      <div class="card"><div class="hd"><h3>Products — enquired vs won (quantity)</h3><span class="note">From deal line items</span></div><div class="bd flush tablewrap">${prodRows ? `<table class="t"><thead><tr><th>Product</th><th class="num">Deals</th><th class="num">Enquired</th><th class="num">Won</th><th class="num">Open</th><th class="num">Lost</th><th class="num">Win</th></tr></thead><tbody>${prodRows}</tbody></table>` : '<div class="empty">Add line items to deals to see this.</div>'}</div></div>
+      <div class="card"><div class="hd"><h3>Win rate by application</h3></div><div class="bd flush tablewrap">${winTable(D.byApplication, 'Application')}</div></div>
+    </div>
+    <div class="faint small">Win rates need at least ${D.minN} decided deals per row before they mean much. Exchange rates: ${cfg.fxRows.map(f => `${esc(f.currency)} ${f.rate}`).join(' · ')} (SGD per unit).</div>`);
+}
+
+/* ======================= Customers ======================= */
+function viewCustomers() {
+  const f = S.filters.customers;
+  const q = f.q.toLowerCase();
+  const rows = S.boot.customers.filter(c => (!q || (c.Name + ' ' + c.CustomerID + ' ' + c.Country).toLowerCase().includes(q)) && (!f.seg || c.Segment === f.seg) && (!f.tier || c.tier === f.tier) && (!f.key || c.KeyAccount === 'Yes'))
+    .sort((a, b) => b.tierScore - a.tierScore || String(a.Name).localeCompare(b.Name));
+  $('#app').innerHTML = shell('cust', `
+    <div class="ph"><div><h1>Customers</h1><div class="sub">${S.boot.customers.length} organisations · one ID each, forever</div></div></div>
+    <div class="card"><div class="hd"><div class="row" style="flex:1">
+      <input class="in" style="max-width:240px" placeholder="Filter by name, ID, country" value="${esc(f.q)}" oninput="S.filters.customers.q=this.value;clearTimeout(window._ct);window._ct=setTimeout(()=>{rerender();const i=document.querySelector('.card .hd input');i.focus();i.setSelectionRange(i.value.length,i.value.length)},250)">
+      <select class="in" style="max-width:200px" onchange="S.filters.customers.seg=this.value;rerender()">${opts(list('Segment'), f.seg, 'All segments')}</select>
+      <select class="in" style="max-width:130px" onchange="S.filters.customers.tier=this.value;rerender()">${opts(['A', 'B', 'C', '—'].map(t => ({ v: t, l: 'Tier ' + t })), f.tier, 'All tiers')}</select>
+      <label class="row small" style="gap:5px"><input type="checkbox" ${f.key ? 'checked' : ''} onchange="S.filters.customers.key=this.checked;rerender()"> Key accounts only</label>
+    </div></div>
+    <div class="bd flush tablewrap">${rows.length ? `<table class="t"><thead><tr><th>ID</th><th>Customer</th><th>Country</th><th>Segment</th><th>Status</th><th>Tier</th><th class="num">Paid (SGD)</th><th class="num">Weighted open</th><th class="num">Deals</th><th>Last contact</th></tr></thead><tbody>
+      ${rows.map(c => `<tr class="click" onclick="go('#/customer/${c.CustomerID}')"><td class="mono faint">${c.CustomerID}</td><td><b>${esc(c.Name)}</b> ${c.KeyAccount === 'Yes' ? '<span class="star" title="Key account">★</span>' : ''}</td><td>${esc(c.Country)}</td><td class="small">${esc(c.Segment || '—')}</td><td><span class="b out">${c.status}</span></td><td>${tierBadge(c.tier)}</td><td class="num">${money(c.paidSGD, '', 0)}</td><td class="num">${money(c.weightedSGD, '', 0)}</td><td class="num">${c.dealCount}</td><td class="small muted nowrap">${fdate(c.lastContact)}</td></tr>`).join('')}
+    </tbody></table>` : '<div class="empty">No customers match.</div>'}</div></div>
+    <div class="faint small" style="margin-top:10px">Tier = paid revenue + weighted value of open deals (A ≥ SGD ${nf0.format(S.boot.config.settings.TierA_SGD)}, B ≥ SGD ${nf0.format(S.boot.config.settings.TierB_SGD)}). Thresholds are assumptions — change them in Settings.</div>`);
+}
+
+function detFor(kind, id) {
+  const B = S.boot;
+  if (kind === 'c') {
+    const ids = new Set(B.deals.filter(d => d.CustomerID === id || d.DistributorID === id).map(d => d.DealID));
+    return { activities: B.activities.filter(a => a.CustomerID === id), payments: B.payments.filter(p => ids.has(p.DealID)), history: B.history.filter(h => ids.has(h.DealID)) };
+  }
+  return { items: B.items.filter(i => i.DealID === id), payments: B.payments.filter(p => p.DealID === id), activities: B.activities.filter(a => a.DealID === id), history: B.history.filter(h => h.DealID === id) };
+}
+async function loadBody(el, id) {
+  if (!el.open || el.dataset.loaded) return;
+  const pre = el.querySelector('pre');
+  try {
+    if (S.cache['b_' + id] === undefined) S.cache['b_' + id] = await call('activityBody', { id });
+    pre.textContent = S.cache['b_' + id]; el.dataset.loaded = '1';
+  } catch (e) { pre.textContent = 'Could not load: ' + e.message; }
+}
+function viewCustomer(id) {
+  const c = cust(id);
+  if (!c) { $('#app').innerHTML = shell('cust', '<div class="empty">Customer not found.</div>'); return; }
+  renderCustomer(id);
+}
+function renderCustomer(id) {
+  const c = cust(id), det = detFor('c', id);
+  const deals = S.boot.deals.filter(d => d.CustomerID === id || d.DistributorID === id).sort((a, b) => String(b.DealID).localeCompare(a.DealID));
+  const contacts = S.boot.contacts.filter(x => x.CustomerID === id);
+  const ed = can('Editor');
+  $('#app').innerHTML = shell('cust', `
+    <div class="dhead"><div>
+      <div class="small muted"><a onclick="go('#/customers')">Customers</a> / <span class="mono">${c.CustomerID}</span></div>
+      <h1>${esc(c.Name)} ${c.KeyAccount === 'Yes' ? '<span class="b key">★ Key account</span>' : ''}</h1>
+      <div class="row">${tierBadge(c.tier)}<span class="b out">${c.status}</span><span class="b">${esc(c.Segment || 'No segment')}</span><span class="b">${esc(c.Country)}</span>${c.OriginalSource ? `<span class="b" title="How they first found us">First source: ${esc(c.OriginalSource)}</span>` : ''}</div>
+      ${c.KeyAccount === 'Yes' && c.KeyAccountNote ? `<div class="small muted" style="margin-top:8px">★ ${esc(c.KeyAccountNote)}</div>` : ''}
+    </div><div class="row">${ed ? `<button class="btn" onclick="customerForm('${id}')">Edit</button><button class="btn pri" onclick="dealForm(null,'${id}')">+ New deal</button>` : ''}</div></div>
+    <div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+      <div class="card kpi green"><div class="l">Paid to date</div><div class="v">${money(c.paidSGD, 'SGD', 0)}</div></div>
+      <div class="card kpi accent"><div class="l">Weighted open</div><div class="v">${money(c.weightedSGD, 'SGD', 0)}</div></div>
+      <div class="card kpi"><div class="l">Deals</div><div class="v">${c.dealCount}</div><div class="s">${c.openDeals} open</div></div>
+      <div class="card kpi"><div class="l">Last contact</div><div class="v" style="font-size:18px">${fdate(c.lastContact)}</div></div>
+    </div>
+    <div class="cols">
+      <div class="card"><div class="hd"><h3>Communication history</h3><span class="note">Everyone on the team can read this</span></div>
+        ${ed ? composerHTML({ CustomerID: id }) : ''}
+        <div class="tl">${timelineHTML(det, false)}</div></div>
+      <div>
+        <div class="card" style="margin-bottom:14px"><div class="hd"><h3>Deals</h3></div><div class="bd flush">${deals.length ? `<table class="t"><tbody>${deals.map(d => `<tr class="click" onclick="go('#/deal/${d.DealID}')"><td><div class="mono faint">${d.DealID}</div><b>${esc(d.Title)}</b>${d.DistributorID === id && d.CustomerID !== id ? `<div class="small muted">for ${esc(custName(d.CustomerID))}</div>` : ''}</td><td class="right">${stageBadge(d.effectiveStage)}<div class="small muted" style="margin-top:4px">${money(d.value, d.Currency, 0)}</div></td></tr>`).join('')}</tbody></table>` : '<div class="empty">No deals yet.</div>'}</div></div>
+        <div class="card" style="margin-bottom:14px"><div class="hd"><h3>Contacts (PIC)</h3>${ed ? `<button class="btn sm" onclick="contactForm(null,'${id}')">+ Add</button>` : ''}</div><div class="bd flush">${contacts.length ? `<table class="t"><tbody>${contacts.map(p => `<tr><td><b>${esc(p.Name)}</b> <span class="muted small">${esc(p.Title)}</span><div class="small">${p.Email ? `<a href="mailto:${esc(p.Email)}">${esc(p.Email)}</a>` : ''} ${esc(p.Phone)}</div></td><td class="right">${ed ? `<button class="btn sm ghost" onclick="contactForm('${p.ContactID}')">Edit</button>` : ''}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No contacts yet.</div>'}</div></div>
+        <div class="card"><div class="hd"><h3>Details</h3></div><div class="bd"><dl class="dl">
+          <dt>Customer ID</dt><dd class="mono">${c.CustomerID}</dd><dt>Website</dt><dd>${c.Website ? `<a href="${esc(/^https?:/.test(c.Website) ? c.Website : 'https://' + c.Website)}" target="_blank">${esc(c.Website)}</a>` : '—'}</dd>
+          <dt>Notes</dt><dd>${esc(c.Notes || '—')}</dd><dt>Created</dt><dd class="small muted">${fdate(c.CreatedAt)} by ${esc(c.CreatedBy || '—')}</dd></dl></div></div>
+      </div>
+    </div>`);
+  wireComposer({ CustomerID: id });
+}
+
+/* ======================= Timeline & composer ======================= */
+function timelineHTML(det, inDeal) {
+  const ev = [];
+  det.activities.forEach(a => ev.push({ t: 'act', date: a.Date, at: a.At, a }));
+  det.payments.forEach(p => ev.push({ t: 'pay', date: p.Date, at: p.At, p }));
+  det.history.forEach(h => ev.push({ t: 'stg', date: h.Date, at: '', h }));
+  ev.sort((x, y) => String(y.date).localeCompare(String(x.date)) || String(y.at).localeCompare(String(x.at)));
+  if (!ev.length) return '<div class="empty">Nothing logged yet. Paste the latest email or set a next action above.</div>';
+  return ev.map(e => {
+    if (e.t === 'act') {
+      const a = e.a, dl = a.DealID ? deal(a.DealID) : null, pc = a.ContactID ? contact(a.ContactID) : null;
+      const canDel = can('Admin') || a.By === S.boot.me.name;
+      const isNxtOnly = a.Type === 'Next action';
+      const isOut = a.Direction === 'To customer';
+      const icCls = isNxtOnly ? 'nxt' : (isOut ? 'out' : '');
+      const icSym = isNxtOnly ? '⏰' : (isOut ? '↗' : '↙');
+      const hasNxtBox = !!(a.NextAction || a.NextActionDate);
+      return `<div class="it"><div class="ic ${icCls}" title="${esc(a.Direction || 'From customer')}">${icSym}</div><div>
+        <div class="meta"><b style="color:var(--ink)">${fdate(a.Date)}</b>${dirBadge(a.Direction, a.Type)}${!isNxtOnly ? `<span>${esc(a.Type)}</span>` : ''}${pc ? `<span>· ${esc(pc.Name)}</span>` : ''}${!inDeal && dl ? `<a onclick="go('#/deal/${dl.DealID}')" class="mono">${dl.DealID}</a>` : ''}<span class="faint">by ${esc(a.By)}</span>${canDel ? `<a class="faint small" style="margin-left:auto" onclick="delActivity('${a.ActivityID}')">delete</a>` : ''}</div>
+        <div class="sum">${esc(a.Summary)}</div>
+        ${hasNxtBox ? `<div class="nxtbox"><b>⏰ Next action:</b> <span>${esc(a.NextAction || 'Scheduled')}</span>${a.NextActionDate ? `<span>· <b>${fdt(a.NextActionDate)}</b></span>` : ''}${a.NextActionBy ? `<span class="small">(${esc(a.NextActionBy)})</span>` : ''}</div>` : ''}
+        ${a.bodyLen ? `<details ontoggle="loadBody(this,'${a.ActivityID}')"><summary class="small" style="cursor:pointer;color:var(--accent)">Show full text (${nf0.format(a.bodyLen)} characters)</summary><pre>Loading…</pre></details>` : ''}
+      </div></div>`;
+    }
+    if (e.t === 'pay') { const p = e.p, d = deal(p.DealID); return `<div class="it"><div class="ic pay">$</div><div><div class="meta"><b style="color:var(--ink)">${fdate(p.Date)}</b><span>Payment received</span>${!inDeal ? `<a onclick="go('#/deal/${p.DealID}')" class="mono">${p.DealID}</a>` : ''}<span class="faint">by ${esc(p.By)}</span></div><div class="sum">${money(p.AmountDealCcy, d ? d.Currency : '', 2)}${p.SGDReceived !== '' ? ` → SGD ${nf2.format(p.SGDReceived)} received` : ''}</div>${p.Reference || p.Note ? `<div class="small muted">${esc([p.Reference, p.Note].filter(Boolean).join(' · '))}</div>` : ''}</div></div>`; }
+    const h = e.h; return `<div class="it"><div class="ic stg">→</div><div><div class="meta"><b style="color:var(--ink)">${fdate(h.Date)}</b><span>Stage change</span>${!inDeal ? `<a onclick="go('#/deal/${h.DealID}')" class="mono">${h.DealID}</a>` : ''}<span class="faint">by ${esc(h.By)}</span></div><div>${h.FromStage ? stageBadge(h.FromStage) + ' → ' : 'Created at '}${stageBadge(h.ToStage)}</div></div></div>`;
+  }).join('');
+}
+
+function composerHTML(ctx) {
+  const deals = S.boot.deals.filter(d => d.CustomerID === ctx.CustomerID || d.DistributorID === ctx.CustomerID);
+  const contacts = S.boot.contacts.filter(x => x.CustomerID === ctx.CustomerID || (ctx.DealID && deal(ctx.DealID) && x.CustomerID === deal(ctx.DealID).DistributorID));
+  const curDeal = ctx.DealID ? deal(ctx.DealID) : null;
+  const defBy = (curDeal && curDeal.NextActionBy) ? curDeal.NextActionBy : S.boot.me.name;
+  const defEm = (curDeal && curDeal.NextActionEmail) ? curDeal.NextActionEmail : '';
+  const team = S.boot.teamNames && S.boot.teamNames.length ? S.boot.teamNames : [S.boot.me.name];
+  return `<div class="composer">
+    <div class="row" style="justify-content:space-between;margin-bottom:8px">
+      <div class="row" style="gap:8px">
+        <span class="small muted" style="font-weight:600">Direction:</span>
+        <div class="seg" id="cp-dir-seg">
+          <button type="button" class="on" data-dir="From customer">↙ From customer</button>
+          <button type="button" data-dir="To customer">↗ To customer</button>
+        </div>
+        <input type="hidden" id="cp-dir" value="From customer">
+      </div>
+      <div class="row small muted" style="gap:10px">
+        <label class="row" style="gap:5px"><input type="checkbox" id="cp-trim" checked> Remove quoted earlier messages</label>
+        <span id="cp-count"></span>
+      </div>
+    </div>
+    <textarea id="cp-body" class="in" placeholder="Paste the message from customer / what we sent (or leave blank if only logging a Next Action below)…" style="min-height:80px"></textarea>
+    <div class="grid g4" style="margin-top:10px">
+      <div class="span2"><label class="f" style="display:flex;justify-content:space-between;align-items:center"><span>One-line summary <span id="cp-ai-st" class="faint" style="font-weight:400"></span></span><a id="cp-resum" class="small" style="font-weight:500">Re-summarise</a></label><input id="cp-sum" class="in" placeholder="Auto-filled by AI from text above (optional if setting Next Action)"></div>
+      <div><label class="f">Method / Type</label><select id="cp-type" class="in">${opts(methodList(), 'Email')}</select></div>
+      <div><label class="f">Date</label><input id="cp-date" type="date" class="in" value="${S.boot.today}"></div>
+      ${ctx.DealID ? '' : `<div class="span2"><label class="f">Deal</label><select id="cp-deal" class="in">${opts(deals.map(d => ({ v: d.DealID, l: d.DealID + ' · ' + d.Title })), deals.length === 1 ? deals[0].DealID : '', '— not linked to a deal —')}</select></div>`}
+      <div class="${ctx.DealID ? 'span2' : 'span2'}"><label class="f">Contact (PIC)</label><select id="cp-contact" class="in">${opts(contacts.map(p => ({ v: p.ContactID, l: p.Name })), '', '—')}</select></div>
+      ${ctx.DealID ? `<div class="span2"></div>` : ''}
+      <div class="span2"><label class="f">Next action (optional — updates deal & logs to history)</label><input id="cp-next" class="in" placeholder="e.g. Chase PO / send proforma"></div>
+      <div><label class="f">Next action date & time <span class="faint">(your time, ${esc(myTzLabel())})</span></label><input id="cp-nextd" type="datetime-local" class="in"></div>
+      <div><label class="f">Assign reminder to</label><select id="cp-nextby" class="in">${opts(team, defBy)}</select></div>
+      <div class="span3"><label class="f">Extra reminder email (optional, comma-separated)</label><input id="cp-nextem" class="in" placeholder="e.g. personal@gmail.com (in addition to creator & assigned user)" value="${esc(defEm)}"></div>
+      <div style="display:flex;align-items:flex-end"><button id="cp-save" class="btn pri" style="width:100%;justify-content:center">Save to history</button></div>
+    </div><div id="cp-err" class="err small" style="margin-top:6px"></div></div>`;
+}
+function trimQuoted(t) {
+  const lines = String(t).replace(/\r\n?/g, '\n').split('\n');
+  let cut = lines.length;
+  for (let i = 1; i < lines.length; i++) {
+    const l = lines[i].trim(), prev = lines[i - 1].trim();
+    const header = /^From:\s/i.test(l) && lines.slice(i + 1, i + 6).some(x => /^(Sent|Date|To|Subject|Dikirim|Kepada):\s/i.test(x.trim()));
+    if (/^On .{5,250}wrote:\s*$/i.test(l) || /^-{2,}\s*(Original|Forwarded) Message\s*-{2,}/i.test(l) || /^Pada .{5,250} menulis:\s*$/i.test(l) || /^Am .{5,250}schrieb.*:\s*$/i.test(l) || /^Le .{5,250}a écrit\s*:\s*$/i.test(l) || (/^_{10,}$/.test(l) && lines.slice(i + 1, i + 3).some(x => /^From:/i.test(x.trim()))) || (i >= 3 && header)) { cut = i; break; }
+    if (/wrote:\s*$/i.test(l) && /^On\s/i.test(prev)) { cut = i - 1; break; }
+  }
+  return lines.slice(0, cut).filter(l => !/^\s*>/.test(l)).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+function suggestSummary(t) {
+  const m = String(t).match(/^\s*Subject:\s*(.+)$/im); if (m) return m[1].replace(/^(re|fw|fwd):\s*/ig, '').trim().slice(0, 140);
+  const lines = String(t).split('\n').map(x => x.trim()).filter(Boolean);
+  const l = lines.find(x => !/^(hi|hello|dear|good (morning|afternoon|evening)|halo|from:|to:|sent:|date:|cc:)\b/i.test(x) && x.length > 12);
+  return l ? l.slice(0, 140) : '';
+}
+function wireComposer(ctx) {
+  const body = $('#cp-body'); if (!body) return;
+  let timer = null, seq = 0;
+  const getClean = () => { const raw = body.value, tr = $('#cp-trim'); return (!tr || tr.checked) ? trimQuoted(raw) : raw.trim(); };  // page may have changed while waiting
+  const upd = () => { const raw = body.value, out = getClean(); $('#cp-count').textContent = raw ? (out.length < raw.length ? `${nf0.format(raw.length)} → ${nf0.format(out.length)} chars` : `${nf0.format(raw.length)} chars`) : ''; };
+  const runSummary = async (force) => {
+    const clean = getClean();
+    const sumEl = $('#cp-sum'), stEl = $('#cp-ai-st');
+    if (!sumEl) return;
+    if (!clean) { if (force || sumEl._auto !== false) sumEl.value = ''; if (stEl) stEl.textContent = ''; return; }
+    if (!force && sumEl.value && sumEl._auto === false) return;
+    const fallback = suggestSummary(body.value);
+    if (!S.boot.config.hasAiKey || clean.length < 15) {
+      if (fallback) { sumEl.value = fallback; sumEl._auto = true; }
+      if (stEl) stEl.textContent = '';
+      return;
+    }
+    const mySeq = ++seq;
+    if (stEl) stEl.textContent = '· ✨ Summarising…';
+    if (!sumEl.value && fallback) { sumEl.value = fallback; sumEl._auto = true; }
+    try {
+      const dir = $('#cp-dir') ? $('#cp-dir').value : 'From customer';
+      const tp = $('#cp-type') ? $('#cp-type').value : 'Email';
+      const r = await gs('api', JSON.stringify({ token: S.token, action: 'summarizeActivity', data: { text: clean, direction: dir, type: tp } }));
+      if (mySeq !== seq || !$('#cp-sum')) return;
+      if (r.ok && r.data && r.data.summary) {
+        $('#cp-sum').value = r.data.summary;
+        $('#cp-sum')._auto = true;
+        if ($('#cp-ai-st')) $('#cp-ai-st').textContent = '· ✨ AI';
+      } else {
+        if ($('#cp-ai-st')) $('#cp-ai-st').textContent = '';
+      }
+    } catch (e) {
+      if (mySeq === seq && $('#cp-ai-st')) $('#cp-ai-st').textContent = '';
+    }
+  };
+  const scheduleSummary = (delay) => { clearTimeout(timer); timer = setTimeout(() => runSummary(true), delay); };
+  const seg = $('#cp-dir-seg');
+  if (seg) {
+    seg.querySelectorAll('button').forEach(btn => {
+      btn.onclick = () => {
+        seg.querySelectorAll('button').forEach(b => b.classList.remove('on'));
+        btn.classList.add('on');
+        $('#cp-dir').value = btn.dataset.dir;
+        if (body.value.trim()) scheduleSummary(150);
+      };
+    });
+  }
+  body.oninput = () => { upd(); scheduleSummary(750); };
+  body.onpaste = () => { setTimeout(() => { upd(); scheduleSummary(150); }, 20); };
+  $('#cp-sum').oninput = () => { $('#cp-sum')._auto = false; if ($('#cp-ai-st')) $('#cp-ai-st').textContent = ''; };
+  $('#cp-trim').onchange = () => { upd(); scheduleSummary(150); };
+  $('#cp-type').onchange = () => { if (body.value.trim() && $('#cp-sum')._auto !== false) scheduleSummary(150); };
+  if ($('#cp-resum')) $('#cp-resum').onclick = () => runSummary(true);
+  $('#cp-save').onclick = async () => {
+    const raw = body.value, text = $('#cp-trim').checked ? trimQuoted(raw) : raw.trim();
+    const dealId = ctx.DealID || ($('#cp-deal') ? $('#cp-deal').value : '');
+    const nextAct = $('#cp-next').value.trim();
+    const nextDt = localToSys($('#cp-nextd').value);
+    const hasNext = !!(nextAct || nextDt);
+    let summary = $('#cp-sum').value.trim();
+    if (!summary && text) summary = suggestSummary(text) || text.slice(0, 120);
+    const data = { CustomerID: ctx.CustomerID, DealID: dealId, ContactID: $('#cp-contact').value, Date: $('#cp-date').value, Direction: $('#cp-dir').value, Type: $('#cp-type').value, Summary: summary, Body: text };
+    if (hasNext) {
+      if (!dealId) { $('#cp-err').textContent = 'Pick a deal to set its next action.'; return; }
+      data.NextAction = nextAct;
+      data.NextActionDate = nextDt;
+      data.NextActionBy = $('#cp-nextby').value;
+      data.NextActionEmail = $('#cp-nextem').value.trim();
+    } else if (dealId && $('#cp-nextem').value.trim()) {
+      data.NextActionEmail = $('#cp-nextem').value.trim();
+    }
+    if (!data.Summary && !hasNext) { $('#cp-err').textContent = 'Paste a message/summary OR fill in a Next Action.'; return; }
+    $('#cp-save').disabled = true;
+    try { await call('addActivity', data); toast('Saved to history'); refreshDetail(); }
+    catch (e) { $('#cp-err').textContent = e.message; $('#cp-save').disabled = false; }
+  };
+}
+async function delActivity(id) {
+  if (!confirm('Delete this entry from the history?')) return;
+  try { await call('deleteActivity', { id }); toast('Deleted'); refreshDetail(); } catch (e) { fail(e); }
+}
+function refreshDetail() { rerender(); }
+
+/* ======================= Deals ======================= */
+function viewDeals() {
+  const f = S.filters.deals, q = f.q.toLowerCase();
+  const stageF = { open: d => !d.lost && d.Stage !== 'Paid' && !d.dormant, won: d => d.won, lost: d => d.lost, dormant: d => d.dormant, novalue: d => d.valueMissing, overdue: d => d.overdue, all: () => true };
+  const pick = stageF[f.stage] || (d => d.effectiveStage === f.stage);
+  const rows = S.boot.deals.filter(d => pick(d) && (!f.brand || d.Brand === f.brand) && (!q || (d.Title + ' ' + d.DealID + ' ' + custName(d.CustomerID)).toLowerCase().includes(q)))
+    .sort((a, b) => String(b.DealID).localeCompare(a.DealID));
+  const chip = (k, l) => `<button class="chip ${f.stage === k ? 'on' : ''}" onclick="S.filters.deals.stage='${k}';rerender()">${l}</button>`;
+  const total = rows.reduce((s, d) => s + d.openSGD, 0), wt = rows.reduce((s, d) => s + d.weightedSGD, 0);
+  $('#app').innerHTML = shell('deal', `
+    <div class="ph"><div><h1>Deals</h1><div class="sub">${rows.length} shown · open value SGD ${nf0.format(total)} · weighted SGD ${nf0.format(wt)}</div></div></div>
+    <div class="chips" style="margin-bottom:10px">${chip('open', 'All open')}${S.boot.config.stages.filter(s => s.name !== 'Paid' && s.name !== 'Lost').map(s => chip(s.name, s.name)).join('')}${chip('dormant', 'Dormant')}${chip('won', 'Won')}${chip('lost', 'Lost')}${chip('overdue', 'Overdue follow-up')}${chip('novalue', 'No value')}${chip('all', 'Everything')}</div>
+    <div class="card"><div class="hd"><div class="row" style="flex:1"><input class="in" style="max-width:260px" placeholder="Filter deals" value="${esc(f.q)}" oninput="S.filters.deals.q=this.value;clearTimeout(window._dt);window._dt=setTimeout(()=>{rerender();const i=document.querySelector('.card .hd input');i.focus();i.setSelectionRange(i.value.length,i.value.length)},250)">
+      <select class="in" style="max-width:160px" onchange="S.filters.deals.brand=this.value;rerender()">${opts(list('Brand'), f.brand, 'All brands')}</select></div></div>
+    <div class="bd flush tablewrap">${rows.length ? `<table class="t"><thead><tr><th>Deal</th><th>Customer</th><th>Stage</th><th class="num">Value</th><th class="num">Weighted (SGD)</th><th>Payment</th><th>Delivery</th><th>Last contact</th><th>Next action</th></tr></thead><tbody>
+      ${rows.map(d => `<tr class="click" onclick="go('#/deal/${d.DealID}')"><td><div class="mono faint">${d.DealID} · ${esc(d.Brand)}</div><b>${esc(d.Title)}</b></td><td>${esc(custName(d.CustomerID))}${d.Channel === 'Distributor' ? `<div class="small muted">via ${esc(custName(d.DistributorID))}</div>` : ''}</td><td>${stageBadge(d.effectiveStage)}</td><td class="num">${d.value ? money(d.value, d.Currency, 0) : '<span class="b st-Awaiting">no value</span>'}</td><td class="num">${money(d.weightedSGD, '', 0)}</td><td>${payFor(d)}</td><td class="small">${esc(d.DeliveryStatus || '—')}</td><td class="small muted nowrap">${ago(d.daysSince)}</td><td class="small ${d.overdue ? '' : 'muted'}" style="${d.overdue ? 'color:var(--red);font-weight:600' : ''}">${d.NextActionDate ? fdt(d.NextActionDate) : '—'}<div>${esc(d.NextAction || '')}</div></td></tr>`).join('')}
+    </tbody></table>` : '<div class="empty">No deals match this filter.</div>'}</div></div>`);
+}
+
+function viewDeal(id) {
+  const d = deal(id);
+  if (!d) { $('#app').innerHTML = shell('deal', '<div class="empty">Deal not found.</div>'); return; }
+  renderDeal(id);
+}
+function renderDeal(id) {
+  const d = deal(id), det = detFor('d', id), c = cust(d.CustomerID), ed = can('Editor');
+  const stages = S.boot.config.stages.filter(s => s.name !== 'Lost');
+  const idx = stages.findIndex(s => s.name === d.Stage);
+  const cls = d.won ? 'won' : d.lost ? 'lost' : '';
+  const step = stages.map((s, i) => `<div class="${d.lost ? (i <= Math.max(0, stages.findIndex(x => d.stagesVisited.includes(x.name) && x.name !== 'Lost')) ? 'done' : '') : i < idx ? 'done' : i === idx ? 'now' : ''}" title="${esc(s.name)} · ${s.prob}%"></div>`).join('');
+  const items = det.items;
+  const itemRows = items.map(i => { const p = product(i.ProductCode); const lp = p && p.listPriceUSD !== '' ? p.listPriceUSD : ''; const up = i.UnitPrice; const disc = (d.Currency === 'USD' && lp && up !== '') ? Math.round((1 - up / lp) * 100) : null;
+    return `<tr><td><span class="mono">${esc(i.ProductCode)}</span><div class="small muted">${esc(p ? p.name : '')}${i.Description ? ' — ' + esc(i.Description) : ''}</div></td><td class="num">${i.Qty}</td><td class="num">${up === '' ? '<span class="faint">—</span>' : money(up, '', 2)}</td><td class="num faint">${lp === '' ? '—' : money(lp, 'USD', 0)}</td><td class="num">${disc == null ? '' : disc > 0 ? `<span class="b st-Awaiting">−${disc}%</span>` : disc < 0 ? `<span class="b">+${-disc}%</span>` : '<span class="b">list</span>'}</td><td class="num">${up === '' ? '—' : money(up * i.Qty, '', 2)}</td></tr>`; }).join('');
+  const pays = det.payments.map(p => `<tr><td class="nowrap">${fdate(p.Date)}</td><td class="num">${money(p.AmountDealCcy, d.Currency, 2)}</td><td class="num">${p.SGDReceived === '' ? '<span class="faint">not entered</span>' : money(p.SGDReceived, 'SGD', 2)}</td><td class="small muted">${esc([p.Reference, p.Note].filter(Boolean).join(' · '))}</td><td class="right">${can('Admin') ? `<a class="small faint" onclick="delPayment('${p.PaymentID}')">delete</a>` : ''}</td></tr>`).join('');
+  const pic = contact(d.PicContactID), dpic = contact(d.DistributorPicID);
+  $('#app').innerHTML = shell('deal', `
+    <div class="dhead"><div>
+      <div class="small muted"><a onclick="go('#/deals')">Deals</a> / <span class="mono">${d.DealID}</span> · ${esc(d.Brand)}</div>
+      <h1>${esc(d.Title)}</h1>
+      <div class="row"><a onclick="go('#/customer/${d.CustomerID}')"><b>${esc(c ? c.Name : d.CustomerID)}</b></a>${d.Channel === 'Distributor' ? `<span class="muted">via <a onclick="go('#/customer/${d.DistributorID}')">${esc(custName(d.DistributorID))}</a></span>` : ''}${stageBadge(d.effectiveStage)}${(d.won || d.paidCcy > 0) ? payBadge(d.payStatus) : ""}${d.dormant ? `<span class="small muted">no contact for ${d.daysSince} days</span>` : ''}</div>
+    </div><div class="row">${ed ? `${!d.lost && d.Stage !== 'Paid' ? `<select class="in" style="width:auto" onchange="quickStage('${id}',this.value)">${opts(S.boot.config.stages.map(s => ({ v: s.name, l: 'Move to: ' + s.name + ' (' + s.prob + '%)' })), d.Stage)}</select>` : ''}<button class="btn" onclick="paymentForm('${id}')">+ Payment</button><button class="btn pri" onclick="dealForm('${id}')">Edit deal</button>` : ''}</div></div>
+    <div class="stepper ${cls}">${step}</div><div class="stepl"><span>${esc(stages[0].name)}</span><span>${esc(stages[stages.length - 1].name)}</span></div>
+    ${d.Stage === 'Lost' ? `<div class="alert" style="background:var(--red-bg);border-color:#F4C7C2;color:var(--red)"><b>Lost:</b> ${esc(d.LostReason || 'no reason given')}${d.LostNote ? ' — ' + esc(d.LostNote) : ''}</div>` : ''}
+    ${d.Stage === 'Paid' && d.payStatus !== 'Paid' ? `<div class="alert">Stage is Paid but payments recorded don't cover the deal value (${money(d.outstanding, d.Currency, 2)} outstanding).</div>` : ''}
+    <div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+      <div class="card kpi"><div class="l">Deal value</div><div class="v">${d.value ? money(d.value, d.Currency, 0) : '—'}</div><div class="s">${d.value && d.Currency !== 'SGD' ? '≈ ' + money(d.value * d.rate, 'SGD', 0) + ' at ' + d.rate : (items.some(i => i.UnitPrice !== '') ? 'From line items' : 'Estimated value')}</div></div>
+      <div class="card kpi green"><div class="l">Received</div><div class="v">${money(d.paidSGD, 'SGD', 0)}</div><div class="s">${money(d.paidCcy, d.Currency, 0)} paid</div></div>
+      <div class="card kpi ${d.outstanding > 0 && d.won ? 'red' : ''}"><div class="l">Outstanding</div><div class="v">${money(d.outstanding, d.Currency, 0)}</div><div class="s">${esc(d.DeliveryStatus || 'Not delivered')}${d.DeliveredDate ? ' · ' + fdate(d.DeliveredDate) : ''}</div></div>
+      <div class="card kpi accent"><div class="l">Weighted (SGD)</div><div class="v">${money(d.weightedSGD, '', 0)}</div><div class="s">${d.prob}% ${d.dormant ? '(dormant)' : 'assumed for ' + esc(d.Stage)}</div></div>
+    </div>
+    <div class="cols">
+      <div>
+        <div class="card" style="margin-bottom:14px"><div class="hd"><h3>Items</h3><span class="note">${esc(d.PriceType || '')}</span></div><div class="bd flush tablewrap">${items.length ? `<table class="t"><thead><tr><th>Product</th><th class="num">Qty</th><th class="num">Unit (${esc(d.Currency)})</th><th class="num">List</th><th class="num">vs list</th><th class="num">Line</th></tr></thead><tbody>${itemRows}${num(d.Shipping) ? `<tr><td class="muted">Shipping / other</td><td></td><td></td><td></td><td></td><td class="num">${money(d.Shipping, '', 2)}</td></tr>` : ''}</tbody></table>` : '<div class="empty">No line items — add them so product statistics work.</div>'}</div></div>
+        <div class="card"><div class="hd"><h3>History for this deal</h3></div>${ed ? composerHTML({ CustomerID: d.CustomerID, DealID: id }) : ''}<div class="tl">${timelineHTML(det, true)}</div></div>
+      </div>
+      <div>
+        <div class="card" style="margin-bottom:14px"><div class="hd"><h3>Next action & reminder</h3></div><div class="bd">${d.NextAction || d.NextActionDate ? `<div style="${d.overdue ? 'color:var(--red);font-weight:600' : ''}">${fdt(d.NextActionDate)}${d.overdue ? ' · overdue' : ''}</div><div style="margin:4px 0"><b>${esc(d.NextAction)}</b></div><div class="small muted">Assigned to: ${esc(d.NextActionBy || d.UpdatedBy || '—')}${d.NextActionEmail ? ' · Extra: ' + esc(d.NextActionEmail) : ''}</div>` : '<span class="muted">None set</span>'}</div></div>
+        <div class="card" style="margin-bottom:14px"><div class="hd"><h3>Payments</h3>${ed ? `<button class="btn sm" onclick="paymentForm('${id}')">+ Add</button>` : ''}</div><div class="bd flush">${pays ? `<table class="t"><tbody>${pays}</tbody></table>` : '<div class="empty">No payment recorded.</div>'}</div></div>
+        <div class="card"><div class="hd"><h3>Details</h3></div><div class="bd"><dl class="dl">
+          <dt>Lead source</dt><dd>${esc(d.LeadSource || '—')}${d.ReferredBy ? `<div class="small muted">by ${esc(d.ReferredBy)}</div>` : ''}</dd>
+          <dt>Channel</dt><dd>${esc(d.Channel || 'Direct')}${d.Channel === 'Distributor' ? ' · ' + esc(custName(d.DistributorID)) : ''}</dd>
+          <dt>PIC</dt><dd>${pic ? esc(pic.Name) + (pic.Email ? ` <a class="small" href="mailto:${esc(pic.Email)}">${esc(pic.Email)}</a>` : '') : '—'}</dd>
+          ${d.Channel === 'Distributor' ? `<dt>Distributor PIC</dt><dd>${dpic ? esc(dpic.Name) : '—'}</dd>` : ''}
+          <dt>Application</dt><dd>${esc(d.Application || '—')}</dd>
+          <dt>Price type</dt><dd>${esc(d.PriceType || '—')}</dd>
+          <dt>First contact</dt><dd>${fdate(d.FirstContact)}</dd>
+          <dt>Last contact</dt><dd>${fdate(d.lastContact)} <span class="small muted">(${ago(d.daysSince)})</span></dd>
+          <dt>Quotation ref</dt><dd>${esc(d.QuoteRef || '—')}</dd>
+          <dt>Serial numbers</dt><dd class="mono">${esc(d.SerialNumbers || '—')}</dd>
+          <dt>Notes</dt><dd>${esc(d.Notes || '—')}</dd>
+          <dt>Updated</dt><dd class="small muted">${fdate(d.UpdatedAt)} by ${esc(d.UpdatedBy || '—')}</dd>
+        </dl></div></div>
+      </div>
+    </div>`);
+  wireComposer({ CustomerID: d.CustomerID, DealID: id });
+}
+function num(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
+
+async function quickStage(id, stage) {
+  const d = deal(id);
+  if (stage === 'Lost') { dealForm(id, null, { Stage: 'Lost' }); return; }
+  if (stage === 'Paid' && d.payStatus !== 'Paid') { toast('Record the payment instead — the deal moves to Paid automatically when fully paid.'); rerender(); return; }
+  const payload = {}; Object.keys(d).forEach(k => { if (/^[A-Z]/.test(k)) payload[k] = d[k]; });
+  payload.Stage = stage;
+  try { await call('saveDeal', { deal: payload }); toast('Moved to ' + stage); refreshDetail(); } catch (e) { fail(e); rerender(); }
+}
+async function delPayment(pid) { if (!confirm('Delete this payment record?')) return; try { await call('deletePayment', { id: pid }); toast('Payment deleted'); refreshDetail(); } catch (e) { fail(e); } }
+
+/* ======================= Modals / forms ======================= */
+function modal(title, body, onSave, saveLabel) {
+  $('#modal').innerHTML = `<div class="ov" onmousedown="if(event.target===this)closeModal()"><div class="modal"><div class="mh"><h2>${esc(title)}</h2><button class="x" onclick="closeModal()">×</button></div><div class="mb">${body}</div><div class="mf"><span id="m-err" class="err"></span><button class="btn" onclick="closeModal()">Cancel</button>${onSave ? `<button id="m-save" class="btn pri">${esc(saveLabel || 'Save')}</button>` : ''}</div></div></div>`;
+  if (onSave) $('#m-save').onclick = async () => {
+    $('#m-err').textContent = ''; $('#m-save').disabled = true;
+    try { await onSave(); } catch (e) { $('#m-err').innerHTML = esc(e.message || e); } finally { const b = $('#m-save'); if (b) b.disabled = false; }
+  };
+}
+function closeModal() { $('#modal').innerHTML = ''; }
+const v = id => { const el = document.getElementById(id); return el ? (el.type === 'checkbox' ? el.checked : el.value) : ''; };
+
+function customerForm(id) {
+  const c = id ? cust(id) : {};
+  const countries = [...new Set(S.boot.customers.map(x => x.Country).filter(Boolean))].sort();
+  modal(id ? 'Edit customer' : 'New customer', `<div class="grid g2">
+    <div class="span2"><label class="f">Organisation name *</label><input id="f-name" class="in" value="${esc(c.Name)}" placeholder="The party you deal with, e.g. Temasek Polytechnic"></div>
+    <div><label class="f">Country *</label><input id="f-country" class="in" list="dl-country" value="${esc(c.Country)}"><datalist id="dl-country">${countries.map(x => `<option value="${esc(x)}">`).join('')}</datalist></div>
+    <div><label class="f">Segment</label><select id="f-seg" class="in">${opts(list('Segment'), c.Segment, '—')}</select></div>
+    <div class="span2"><label class="row" style="gap:6px;font-weight:600"><input type="checkbox" id="f-key" ${c.KeyAccount === 'Yes' ? 'checked' : ''}> ★ Key account (high-profile customer for us)</label></div>
+    <div class="span2"><label class="f">Why key account?</label><input id="f-keynote" class="in" value="${esc(c.KeyAccountNote)}" placeholder="e.g. National research programme, strategic reference customer"></div>
+    <div><label class="f">Website</label><input id="f-web" class="in" value="${esc(c.Website)}"></div>
+    <div><label class="f">Notes</label><input id="f-notes" class="in" value="${esc(c.Notes)}"></div>
+  </div><div id="dup" style="margin-top:12px"></div>`, () => saveCust(false));
+  async function saveCust(force) {
+    const data = { CustomerID: id || '', Name: v('f-name'), Country: v('f-country'), Segment: v('f-seg'), KeyAccount: v('f-key') ? 'Yes' : '', KeyAccountNote: v('f-keynote'), Website: v('f-web'), Notes: v('f-notes'), confirmDuplicate: force };
+    try {
+      const newId = await call('saveCustomer', data); closeModal(); toast(id ? 'Customer updated' : 'Customer ' + newId + ' created');
+      if (id) refreshDetail(); else go('#/customer/' + newId);
+    } catch (e) {
+      if (String(e.message).startsWith('DUPLICATE::')) {
+        const list = JSON.parse(e.message.slice(11));
+        $('#dup').innerHTML = `<div class="alert"><b>Looks like this customer may already exist:</b>${list.map(x => `<div style="margin-top:4px"><a onclick="closeModal();go('#/customer/${x.id}')">${esc(x.id)} · ${esc(x.name)} (${esc(x.country)})</a></div>`).join('')}<div style="margin-top:8px"><button class="btn sm" id="dup-go">It's a different organisation — create anyway</button></div></div>`;
+        $('#dup-go').onclick = () => saveCust(true);
+        return;
+      }
+      throw e;
+    }
+  }
+}
+
+function contactForm(contactId, customerId) {
+  const p = contactId ? contact(contactId) : { CustomerID: customerId };
+  modal(contactId ? 'Edit contact' : 'New contact (PIC)', `<div class="grid g2">
+    <div><label class="f">Name *</label><input id="f-cn" class="in" value="${esc(p.Name)}"></div>
+    <div><label class="f">Title / role</label><input id="f-ct" class="in" value="${esc(p.Title)}"></div>
+    <div><label class="f">Email</label><input id="f-ce" class="in" type="email" value="${esc(p.Email)}"></div>
+    <div><label class="f">Phone / WhatsApp</label><input id="f-cp" class="in" value="${esc(p.Phone)}"></div>
+    <div class="span2"><label class="f">Notes</label><input id="f-cno" class="in" value="${esc(p.Notes)}"></div></div>`, async () => {
+    await call('saveContact', { ContactID: contactId || '', CustomerID: p.CustomerID, Name: v('f-cn'), Title: v('f-ct'), Email: v('f-ce'), Phone: v('f-cp'), Notes: v('f-cno') });
+    closeModal(); toast('Contact saved'); refreshDetail();
+  });
+}
+
+function dealForm(id, customerId, preset) {
+  const isNew = !id;
+  const d = Object.assign({}, id ? deal(id) : { CustomerID: customerId || '', Brand: list('Brand')[0], Channel: 'Direct', Stage: 'Enquiry', Currency: 'USD', PriceType: 'Standard', DeliveryStatus: 'Not delivered', FirstContact: S.boot.today, NextActionBy: S.boot.me.name, NextActionEmail: '' }, preset || {});
+  const custOpts = S.boot.customers.slice().sort((a, b) => a.Name.localeCompare(b.Name)).map(c => ({ v: c.CustomerID, l: c.Name + ' (' + c.CustomerID + ')' }));
+  const prodOpts = S.boot.config.products.filter(p => p.active).map(p => ({ v: p.code, l: p.code + ' — ' + p.name }));
+  const ccys = S.boot.config.fxRows.map(f => f.currency);
+  const team = S.boot.teamNames && S.boot.teamNames.length ? S.boot.teamNames : [S.boot.me.name];
+  const existingItems = id ? S.boot.items.filter(i => i.DealID === id) : [];
+  const itemRow = (i) => `<tr><td style="width:34%"><select class="in it-p">${opts(prodOpts, i.ProductCode, '— product —')}</select></td><td><input class="in it-d" value="${esc(i.Description || '')}" placeholder="Detail (optional)"></td><td style="width:70px"><input class="in it-q" type="number" min="0" step="any" value="${esc(i.Qty || 1)}"></td><td style="width:110px"><input class="in it-u" type="number" min="0" step="any" value="${esc(i.UnitPrice === undefined ? '' : i.UnitPrice)}" placeholder="unit price"></td><td style="width:30px"><button class="x" title="Remove" onclick="this.closest('tr').remove();dealTotal()">×</button></td></tr>`;
+  modal(isNew ? 'New deal' : 'Edit ' + d.DealID, `<div class="grid g3">
+    <div class="sect spanall">Who & what</div>
+    <div class="span2"><label class="f">Customer (end user) *</label><select id="f-cust" class="in">${opts(custOpts, d.CustomerID, '— pick customer —')}</select><div class="small muted" style="margin-top:3px">Not listed? <a onclick="closeModal();customerForm()">Create the customer first</a>.</div></div>
+    <div><label class="f">Brand</label><select id="f-brand" class="in">${opts(list('Brand'), d.Brand)}</select></div>
+    <div class="span2"><label class="f">Deal title *</label><input id="f-title" class="in" value="${esc(d.Title)}" placeholder="e.g. P-3000 genset for tower lamp"></div>
+    <div><label class="f">Application</label><select id="f-app" class="in">${opts(list('Application'), d.Application, '—')}</select></div>
+    <div><label class="f">Lead source *</label><select id="f-src" class="in" ${isNew ? '' : 'disabled'}>${opts(list('LeadSource').filter(x => isNew ? x !== 'Unknown (legacy)' : true), d.LeadSource, '— pick —')}</select>${isNew ? '' : '<div class="small faint" style="margin-top:3px">Fixed after creation</div>'}</div>
+    <div id="w-ref" class="${d.LeadSource === 'Referral' ? '' : 'hidden'}"><label class="f">Referred by *</label><input id="f-ref" class="in" value="${esc(d.ReferredBy)}" ${isNew ? '' : 'disabled'}></div>
+    <div><label class="f">PIC (customer side)</label><select id="f-pic" class="in"></select></div>
+    <div><label class="f">Channel</label><select id="f-chan" class="in">${opts(list('Channel'), d.Channel)}</select></div>
+    <div id="w-dist" class="${d.Channel === 'Distributor' ? '' : 'hidden'}"><label class="f">Distributor *</label><select id="f-dist" class="in">${opts(custOpts, d.DistributorID, '— pick —')}</select></div>
+    <div id="w-dpic" class="${d.Channel === 'Distributor' ? '' : 'hidden'}"><label class="f">Distributor PIC</label><select id="f-dpic" class="in"></select></div>
+    <div class="sect spanall">Stage & value</div>
+    <div><label class="f">Stage *</label><select id="f-stage" class="in">${opts(S.boot.config.stages.map(s => ({ v: s.name, l: s.name + ' (' + s.prob + '%)' })), d.Stage)}</select></div>
+    <div><label class="f">Currency</label><select id="f-ccy" class="in">${opts(ccys, d.Currency)}</select></div>
+    <div><label class="f">Price type</label><select id="f-ptype" class="in">${opts(list('PriceType'), d.PriceType, '—')}</select></div>
+    <div id="w-lost" class="spanall grid g2 ${d.Stage === 'Lost' ? '' : 'hidden'}" style="gap:12px"><div><label class="f">Lost reason *</label><select id="f-lr" class="in">${opts(list('LostReason'), d.LostReason, '— pick —')}</select></div><div><label class="f">Lost note</label><input id="f-ln" class="in" value="${esc(d.LostNote)}"></div></div>
+    <div class="spanall"><label class="f">Line items — products quoted</label><table class="items" style="width:100%"><tbody id="f-items">${(existingItems.length ? existingItems : [{}]).map(itemRow).join('')}</tbody></table><button class="btn sm" onclick="document.getElementById('f-items').insertAdjacentHTML('beforeend', window._itemRow({}))">+ Add line</button></div>
+    <div><label class="f">Shipping / other</label><input id="f-ship" class="in" type="number" step="any" value="${esc(d.Shipping)}"></div>
+    <div><label class="f">Estimated value <span class="faint">(if no unit prices)</span></label><input id="f-est" class="in" type="number" step="any" value="${esc(d.EstimatedValue)}"></div>
+    <div><label class="f">Deal value</label><div id="f-total" class="in" style="background:var(--bg);font-weight:700"></div></div>
+    <div class="sect spanall">Delivery, follow-up & email reminder</div>
+    <div><label class="f">Delivery status</label><select id="f-del" class="in">${opts(list('DeliveryStatus'), d.DeliveryStatus)}</select></div>
+    <div><label class="f">Delivered date</label><input id="f-deld" type="date" class="in" value="${esc(String(d.DeliveredDate || '').slice(0, 10))}"></div>
+    <div><label class="f">First contact</label><input id="f-first" type="date" class="in" value="${esc(String(d.FirstContact || '').slice(0, 10))}"></div>
+    <div class="span2"><label class="f">Next action</label><input id="f-next" class="in" value="${esc(d.NextAction)}" placeholder="e.g. Follow up on quotation"></div>
+    <div><label class="f">Next action date & time <span class="faint">(your time, ${esc(myTzLabel())})</span></label><input id="f-nextd" type="datetime-local" class="in" value="${esc(toDtInput(d.NextActionDate))}"></div>
+    <div><label class="f">Assign reminder to</label><select id="f-nextby" class="in">${opts(team, d.NextActionBy || S.boot.me.name)}</select></div>
+    <div class="span2"><label class="f">Extra reminder email (optional)</label><input id="f-nextem" class="in" value="${esc(d.NextActionEmail || '')}" placeholder="e.g. other@email.com (sent at H-24h & when due)"></div>
+    <div><label class="f">Quotation ref</label><input id="f-qref" class="in" value="${esc(d.QuoteRef)}" placeholder="from document generator"></div>
+    <div class="span2"><label class="f">Serial numbers</label><input id="f-sn" class="in" value="${esc(d.SerialNumbers)}" placeholder="e.g. P3000 SN 2601-01"></div>
+    <div class="spanall"><label class="f">Notes</label><textarea id="f-notes" class="in" style="min-height:60px">${esc(d.Notes)}</textarea></div>
+  </div>`, async () => {
+    const items = [...document.querySelectorAll('#f-items tr')].map(tr => ({ ProductCode: tr.querySelector('.it-p').value, Description: tr.querySelector('.it-d').value, Qty: tr.querySelector('.it-q').value, UnitPrice: tr.querySelector('.it-u').value }));
+    const dealData = { DealID: id || '', CustomerID: v('f-cust'), Title: v('f-title'), Brand: v('f-brand'), Application: v('f-app'), LeadSource: v('f-src'), ReferredBy: v('f-ref'), Channel: v('f-chan'), DistributorID: v('f-chan') === 'Distributor' ? v('f-dist') : '', PicContactID: v('f-pic'), DistributorPicID: v('f-chan') === 'Distributor' ? v('f-dpic') : '', Stage: v('f-stage'), Currency: v('f-ccy'), PriceType: v('f-ptype'), LostReason: v('f-stage') === 'Lost' ? v('f-lr') : '', LostNote: v('f-stage') === 'Lost' ? v('f-ln') : '', Shipping: v('f-ship'), EstimatedValue: v('f-est'), DeliveryStatus: v('f-del'), DeliveredDate: v('f-deld'), FirstContact: v('f-first'), NextAction: v('f-next'), NextActionDate: localToSys(v('f-nextd')), NextActionBy: v('f-nextby'), NextActionEmail: v('f-nextem'), QuoteRef: v('f-qref'), SerialNumbers: v('f-sn'), Notes: v('f-notes') };
+    if (dealData.Stage === 'Paid' && (!id || deal(id).payStatus !== 'Paid')) throw new Error('Paid is set automatically when payments cover the deal value. Pick PO received and add the payment.');
+    const newId = await call('saveDeal', { deal: dealData, items });
+    closeModal(); toast(isNew ? 'Deal ' + newId + ' created' : 'Deal saved');
+    if (isNew) go('#/deal/' + newId); else refreshDetail();
+  }, isNew ? 'Create deal' : 'Save');
+  window._itemRow = itemRow;
+  const fillPics = () => {
+    const cid = v('f-cust'), did = v('f-dist');
+    $('#f-pic').innerHTML = opts(S.boot.contacts.filter(x => x.CustomerID === cid).map(x => ({ v: x.ContactID, l: x.Name })), d.PicContactID, '—');
+    $('#f-dpic').innerHTML = opts(S.boot.contacts.filter(x => x.CustomerID === did).map(x => ({ v: x.ContactID, l: x.Name })), d.DistributorPicID, '—');
+  };
+  fillPics();
+  $('#f-cust').onchange = fillPics; $('#f-dist').onchange = fillPics;
+  $('#f-src').onchange = () => $('#w-ref').classList.toggle('hidden', v('f-src') !== 'Referral');
+  $('#f-chan').onchange = () => { const on = v('f-chan') === 'Distributor'; $('#w-dist').classList.toggle('hidden', !on); $('#w-dpic').classList.toggle('hidden', !on); };
+  $('#f-stage').onchange = () => $('#w-lost').classList.toggle('hidden', v('f-stage') !== 'Lost');
+  document.querySelector('.modal').addEventListener('input', dealTotal);
+  document.querySelector('.modal').addEventListener('change', dealTotal);
+  dealTotal();
+}
+function dealTotal() {
+  const el = $('#f-total'); if (!el) return;
+  let t = 0, priced = false;
+  document.querySelectorAll('#f-items tr').forEach(tr => { const u = tr.querySelector('.it-u').value; if (u !== '') { priced = true; t += num(u) * num(tr.querySelector('.it-q').value); } });
+  const ccy = v('f-ccy');
+  const total = priced && t > 0 ? t + num(v('f-ship')) : num(v('f-est'));
+  el.textContent = total ? money(total, ccy, 2) + (priced && t > 0 ? '' : ' (estimate)') : '— enter prices or an estimate';
+}
+
+function paymentForm(dealId) {
+  const d = deal(dealId), rate = d.rate;
+  modal('Record payment — ' + d.DealID, `<div class="alert info" style="margin-top:0">Revenue is counted when money arrives. Enter the <b>SGD that actually landed in the bank</b> — that locks the real figure, whatever the exchange rate does later.</div>
+    <div class="grid g2">
+      <div><label class="f">Date received *</label><input id="f-pd" type="date" class="in" value="${S.boot.today}"></div>
+      <div><label class="f">Amount paid (${esc(d.Currency)}) *</label><input id="f-pa" type="number" step="any" class="in" value="${d.outstanding || ''}"><div class="small muted" style="margin-top:3px">Outstanding: ${money(d.outstanding, d.Currency, 2)}</div></div>
+      <div><label class="f">SGD received in bank</label><input id="f-ps" type="number" step="any" class="in" placeholder="from bank statement"><div class="small muted" style="margin-top:3px" id="f-pshint"></div></div>
+      <div><label class="f">Reference</label><input id="f-pr" class="in" placeholder="Invoice / transfer ref"></div>
+      <div class="span2"><label class="f">Note</label><input id="f-pn" class="in" placeholder="e.g. 50% deposit"></div>
+    </div>`, async () => {
+    await call('addPayment', { DealID: dealId, Date: v('f-pd'), AmountDealCcy: v('f-pa'), SGDReceived: v('f-ps'), Reference: v('f-pr'), Note: v('f-pn') });
+    closeModal(); toast('Payment recorded'); refreshDetail();
+  }, 'Save payment');
+  const hint = () => { $('#f-pshint').textContent = d.Currency === 'SGD' ? 'Same as amount' : `At today's rate ≈ SGD ${nf2.format(num(v('f-pa')) * rate)} — leave blank to use this estimate`; };
+  $('#f-pa').oninput = hint; hint();
+}
+
+/* ======================= Settings ======================= */
+function aiAndReminderBoxHTML() {
+  if (!can('Admin')) return '';
+  const has = S.boot.config.hasAiKey;
+  const rem = S.boot.config.reminderActive;
+  return '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line2)">'
+    + '<label class="f">AI summary — Gemini API key (' + (has ? '<span style="color:var(--green)">configured ✓</span>' : 'not set') + ')</label>'
+    + '<div class="row"><input id="st-aikey" type="password" class="in" style="max-width:260px" placeholder="' + (has ? '•••••• (enter new key to replace)' : 'Paste Google AI Studio key') + '" autocomplete="off"><button class="btn sm" onclick="saveAiKey()">Save key</button></div>'
+    + '<div class="small muted" style="margin-top:4px">Stored privately in Script Properties. Automatically summarises pasted emails/notes.</div>'
+    + '</div>'
+    + '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line2)">'
+    + '<label class="f">Email Reminders — checked every 10 min (' + (rem ? '<span style="color:var(--green)">active ✓</span>' : '<span style="color:var(--red)">not active — click Enable below</span>') + ')</label>'
+    + '<div class="row">'
+    + '<button class="btn sm ' + (rem ? '' : 'pri') + '" onclick="toggleReminders(' + (!rem) + ')">' + (rem ? 'Disable reminders' : 'Enable reminders (every 10 min)') + '</button>'
+    + '<button class="btn sm" onclick="runRemindersNow()">Send due reminders now (test)</button>'
+    + '</div>'
+    + '<div class="small muted" style="margin-top:4px">Checks every 10 minutes (and immediately on save): one email about 24 hours before, one when the Next Action time arrives. After updating the code, click Disable then Enable once.</div>'
+    + '</div>';
+}
+function viewSettings() {
+  const cfg = S.boot.config, admin = can('Admin'), D = S.boot.dashboard;
+  const actual = {}; D.pipeline.forEach(p => actual[p.stage] = p);
+  const dis = admin ? '' : 'disabled';
+  const listNames = Object.keys(cfg.lists);
+  $('#app').innerHTML = shell('set', `
+    <div class="ph"><div><h1>Settings</h1><div class="sub">${admin ? 'Changes apply to everyone immediately.' : 'Read-only — only Admins can change settings.'}</div></div></div>
+    <div class="cols even">
+      <div class="card"><div class="hd"><h3>Exchange rates</h3><span class="note">SGD per 1 unit</span></div><div class="bd flush"><table class="t"><thead><tr><th>Currency</th><th>Rate</th><th>Note</th><th>Updated</th><th></th></tr></thead><tbody>
+        ${cfg.fxRows.map((f, i) => `<tr><td class="mono"><b>${esc(f.currency)}</b></td><td><input class="in" id="fx-r${i}" type="number" step="any" style="width:110px" value="${f.rate}" ${dis || (f.currency === 'SGD' ? 'disabled' : '')}></td><td><input class="in" id="fx-n${i}" value="${esc(f.note)}" ${dis}></td><td class="small muted nowrap">${fdate(f.updatedAt)}<br>${esc(f.updatedBy || '')}</td><td>${admin && f.currency !== 'SGD' ? `<button class="btn sm" onclick="saveFx('${f.currency}',${i})">Save</button>` : ''}</td></tr>`).join('')}
+        ${admin ? `<tr><td><input class="in" id="fx-newc" placeholder="JPY" style="width:70px"></td><td><input class="in" id="fx-newr" type="number" step="any" style="width:110px"></td><td><input class="in" id="fx-newn" placeholder="note"></td><td></td><td><button class="btn sm" onclick="saveFx(null)">Add</button></td></tr>` : ''}
+      </tbody></table><div class="small muted" style="padding:10px 16px">Rates only affect open (unpaid) amounts. Paid deals use the SGD actually received.</div></div></div>
+      <div class="card"><div class="hd"><h3>Stage probabilities</h3><span class="note">Assumptions until real data</span></div><div class="bd flush"><table class="t"><thead><tr><th>Stage</th><th>Assumed %</th><th class="num">Actual win % so far</th></tr></thead><tbody>
+        ${cfg.stages.map((s, i) => `<tr><td>${stageBadge(s.name)}</td><td><input class="in" id="sp-${i}" type="number" min="0" max="100" style="width:80px" value="${s.prob}" ${dis || (s.name === 'Paid' || s.name === 'Lost' ? 'disabled' : '')}></td><td class="num">${actual[s.name] && actual[s.name].actualWin != null ? `${actual[s.name].actualWin}% <span class="faint small">(n=${actual[s.name].actualN})</span>` : '<span class="faint">—</span>'}</td></tr>`).join('')}
+      </tbody></table>${admin ? `<div style="padding:10px 16px" class="row"><button class="btn pri sm" onclick="saveProbs()">Save probabilities</button><span class="small muted">Switch a stage to its actual % once n ≥ ${D.minN}.</span></div>` : ''}</div></div>
+    </div>
+    <div class="cols even">
+      <div class="card"><div class="hd"><h3>Rules, AI & Reminders</h3></div><div class="bd"><div class="grid g2">
+        <div><label class="f">Dormant after (days without contact)</label><input id="st-dorm" class="in" type="number" value="${esc(cfg.settings.DormantDays)}" ${dis}></div>
+        <div><label class="f">Small-sample warning (decided deals)</label><input id="st-n" class="in" type="number" value="${esc(cfg.settings.SmallSampleN)}" ${dis}></div>
+        <div><label class="f">Tier A from (SGD)</label><input id="st-a" class="in" type="number" value="${esc(cfg.settings.TierA_SGD)}" ${dis}></div>
+        <div><label class="f">Tier B from (SGD)</label><input id="st-b" class="in" type="number" value="${esc(cfg.settings.TierB_SGD)}" ${dis}></div>
+        <div class="span2"><label class="f">CRM link used in reminder emails <span class="faint">(leave empty = Apps Script link)</span></label><input id="st-url" class="in" value="${esc(cfg.settings.PublicUrl || '')}" placeholder="e.g. https://yourname.github.io/spectronik-crm/" ${dis}></div>
+      </div>${admin ? '<button class="btn pri sm" style="margin-top:12px" onclick="saveRules()">Save rules</button>' : ''}${aiAndReminderBoxHTML()}</div></div>
+      <div class="card"><div class="hd"><h3>Dropdown lists</h3></div><div class="bd">
+        <select id="ls-name" class="in" onchange="document.getElementById('ls-vals').innerHTML=(S.boot.config.lists[this.value]||[]).map(x=>'<span class=\\'b\\' style=\\'margin:0 4px 4px 0\\'>'+esc(x)+'</span>').join('')">${opts(listNames, 'LeadSource')}</select>
+        <div id="ls-vals" style="margin:10px 0">${(cfg.lists.LeadSource || []).map(x => `<span class="b" style="margin:0 4px 4px 0">${esc(x)}</span>`).join('')}</div>
+        ${admin ? `<div class="row"><input id="ls-new" class="in" style="max-width:240px" placeholder="New value"><button class="btn sm" onclick="addListVal()">Add to list</button></div><div class="small muted" style="margin-top:6px">Don't rename values that are already in use — old records would stop matching. Add new ones instead.</div>` : ''}
+      </div></div>
+    </div>
+    ${admin ? `<div class="card" style="margin-bottom:14px"><div class="hd"><h3>Users, Roles, PINs & Reminder Emails</h3><span class="note">One PIN per person — email is used for follow-up reminders</span></div><div class="bd flush tablewrap"><table class="t"><thead><tr><th>Name</th><th>Email (for reminders)</th><th>Role</th><th>Active</th><th>New PIN</th><th></th></tr></thead><tbody>
+      ${S.boot.users.map((u, i) => `<tr><td><b>${esc(u.Name)}</b> <span class="mono faint">${u.UserID}</span></td><td><input id="u-e${i}" class="in" type="email" style="min-width:190px" value="${esc(u.Email || '')}" placeholder="user@spectronik.com"></td><td><select id="u-r${i}" class="in" style="width:110px">${opts(['Admin', 'Editor', 'Viewer'], u.Role)}</select></td><td><select id="u-a${i}" class="in" style="width:80px">${opts(['Yes', 'No'], u.Active || 'Yes')}</select></td><td><input id="u-p${i}" class="in pin" style="width:130px;font-size:14px;letter-spacing:4px" maxlength="6" inputmode="numeric" placeholder="keep"></td><td><button class="btn sm" onclick="saveUser(${i},'${u.UserID}','${esc(u.Name)}')">Save</button></td></tr>`).join('')}
+      <tr><td><input id="u-nn" class="in" placeholder="Name"></td><td><input id="u-ne" class="in" type="email" style="min-width:190px" placeholder="user@spectronik.com"></td><td><select id="u-nr" class="in" style="width:110px">${opts(['Editor', 'Viewer', 'Admin'], 'Editor')}</select></td><td></td><td><input id="u-np" class="in pin" style="width:130px;font-size:14px;letter-spacing:4px" maxlength="6" inputmode="numeric" placeholder="6 digits"></td><td><button class="btn sm pri" onclick="saveUser(-1)">Add user</button></td></tr>
+    </tbody></table><div class="small muted" style="padding:10px 16px">Viewer = read-only (e.g. investors). Editor = can add and edit records. Admin = also settings and users.</div></div></div>` : ''}
+    <div class="card"><div class="hd"><h3>Products</h3><span class="note">Used for line items and product statistics</span></div><div class="bd flush tablewrap"><table class="t"><thead><tr><th>Code</th><th>Name</th><th>Category</th><th class="num">List price (USD)</th><th>Active</th>${admin ? '<th></th>' : ''}</tr></thead><tbody>
+      ${cfg.products.map((p, i) => `<tr><td class="mono">${esc(p.code)}</td><td>${admin ? `<input class="in" id="pr-n${i}" value="${esc(p.name)}">` : esc(p.name)}</td><td>${admin ? `<input class="in" id="pr-c${i}" value="${esc(p.category)}" style="width:150px">` : esc(p.category)}</td><td class="num">${admin ? `<input class="in" id="pr-l${i}" type="number" step="any" value="${esc(p.listPriceUSD)}" style="width:110px">` : money(p.listPriceUSD, '', 0)}</td><td>${admin ? `<input type="checkbox" id="pr-a${i}" ${p.active ? 'checked' : ''}>` : (p.active ? 'Yes' : 'No')}</td>${admin ? `<td><button class="btn sm" onclick="saveProd(${i},'${esc(p.code)}')">Save</button></td>` : ''}</tr>`).join('')}
+      ${admin ? `<tr><td><input class="in" id="pr-newc" placeholder="CODE" style="width:110px"></td><td><input class="in" id="pr-newn" placeholder="Name"></td><td><input class="in" id="pr-newcat" placeholder="Category" style="width:150px"></td><td class="num"><input class="in" id="pr-newl" type="number" step="any" style="width:110px"></td><td></td><td><button class="btn sm pri" onclick="saveProd(-1)">Add</button></td></tr>` : ''}
+    </tbody></table></div></div>
+    ${admin && !S.boot.customers.length ? `<div class="card" style="margin-top:14px"><div class="bd row" style="justify-content:space-between"><div><b>Empty CRM.</b> <span class="muted">Load 8 sample customers from Jo's sheet to test the logic.</span></div><button class="btn" onclick="call('loadSample',{}).then(r=>{toast(r);rerender()}).catch(fail)">Load sample data</button></div></div>` : ''}
+  `);
+}
+async function saveFx(ccy, i) {
+  const data = ccy ? { currency: ccy, rate: v('fx-r' + i), note: v('fx-n' + i) } : { currency: v('fx-newc'), rate: v('fx-newr'), note: v('fx-newn') };
+  try { await call('saveFX', data); toast('Rate saved'); rerender(); } catch (e) { fail(e); }
+}
+async function saveProbs() {
+  const stages = S.boot.config.stages.map((s, i) => ({ name: s.name, prob: v('sp-' + i) }));
+  try { await call('saveStageProb', { stages }); toast('Probabilities saved'); rerender(); } catch (e) { fail(e); }
+}
+async function saveRules() {
+  try { await call('saveSettings', { DormantDays: num(v('st-dorm')), SmallSampleN: num(v('st-n')), TierA_SGD: num(v('st-a')), TierB_SGD: num(v('st-b')), PublicUrl: v('st-url').trim() }); toast('Rules saved'); rerender(); } catch (e) { fail(e); }
+}
+async function saveAiKey() {
+  try { await call('saveAiKey', { key: v('st-aikey') }); toast(v('st-aikey').trim() ? 'Gemini API key saved' : 'Gemini API key cleared'); rerender(); } catch (e) { fail(e); }
+}
+async function toggleReminders(enable) {
+  try { const r = await call('setupReminderTrigger', { enable }); toast(r.message); rerender(); } catch (e) { fail(e); }
+}
+async function runRemindersNow() {
+  try { const r = await call('runRemindersNow', {}); toast(r.message || ('Sent ' + r.sent + ' reminder email(s)')); } catch (e) { fail(e); }
+}
+async function addListVal() { try { await call('addListValue', { list: v('ls-name'), value: v('ls-new') }); toast('Added'); rerender(); } catch (e) { fail(e); } }
+async function saveUser(i, uid, name) {
+  const data = i < 0 ? { Name: v('u-nn'), Email: v('u-ne'), Role: v('u-nr'), Pin: v('u-np'), Active: 'Yes' } : { UserID: uid, Name: name, Email: v('u-e' + i), Role: v('u-r' + i), Active: v('u-a' + i), Pin: v('u-p' + i) };
+  try { await call('saveUser', data); toast('User saved'); rerender(); } catch (e) { fail(e); }
+}
+async function saveProd(i, code) {
+  const data = i < 0 ? { code: v('pr-newc'), name: v('pr-newn'), category: v('pr-newcat'), listPriceUSD: v('pr-newl'), active: true } : { code, name: v('pr-n' + i), category: v('pr-c' + i), listPriceUSD: v('pr-l' + i), active: v('pr-a' + i) };
+  try { await call('saveProduct', data); toast('Product saved'); rerender(); } catch (e) { fail(e); }
+}
+
+window.onload = start;
+</script>
+</body>
+</html>
