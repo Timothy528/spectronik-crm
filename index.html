@@ -206,7 +206,7 @@ window.CRM_API_URL = 'https://script.google.com/macros/s/AKfycbxajDpngogll-tK0Ws
 <div id="loading" class="loading hidden"></div>
 <script>
 /* ======================= Runtime bridge ======================= */
-const S = { token: null, boot: null, dispCcy: 'SGD', cache: {}, filters: { deals: { stage: 'open', brand: '', q: '' }, customers: { q: '', seg: '', tier: '', key: false } } };
+const S = { token: null, crm: null, boot: null, dispCcy: 'SGD', cache: {}, filters: { deals: { stage: 'open', brand: '', q: '' }, customers: { q: '', seg: '', tier: '', key: false } } };
 function store(k, v) { try { if (v === undefined) return sessionStorage.getItem(k); if (v === null) sessionStorage.removeItem(k); else sessionStorage.setItem(k, v); } catch (e) { return null; } }
 let busy = 0;
 function setBusy(d) { busy += d; document.getElementById('loading').classList.toggle('hidden', busy <= 0); }
@@ -246,9 +246,10 @@ function gs(fn, ...args) {
   });
 }
 async function call(action, data) {
-  const r = await gs('api', JSON.stringify({ token: S.token, action, data }));
+  const r = await gs('api', JSON.stringify({ token: S.token, crm: S.crm, action, data }));
   if (!r.ok) {
     if (r.error === 'SESSION_EXPIRED') { logout(true); throw new Error('Session expired — please log in again.'); }
+    if (r.error === 'NO_CRM') { logout(); throw new Error('Pick a CRM.'); }
     throw new Error(r.error);
   }
   if (r.boot) S.boot = r.boot;
@@ -334,16 +335,18 @@ async function start() {
       google.script.history.setChangeHandler(e => { S.route = (e.state && e.state.r) || e.location.hash || 'dashboard'; if (S.boot) route(); });
     }
   } catch (e) { }
-  S.token = store('crm_token');
-  if (S.token) {
-    try { const r = await gs('api', JSON.stringify({ token: S.token, action: 'bootstrap' })); if (r.ok) { S.boot = r.data; return route(); } } catch (e) { }
-    store('crm_token', null); S.token = null;
+  S.token = store('crm_token'); S.crm = store('crm_id');
+  const urlCrm = urlCrmParam();
+  if (urlCrm && urlCrm !== S.crm) S.crm = urlCrm;
+  if (S.token && S.crm) {
+    try { const r = await gs('api', JSON.stringify({ token: S.token, crm: S.crm, action: 'bootstrap' })); if (r.ok) { S.boot = r.data; afterBoot(); return route(); } } catch (e) { }
   }
+  store('crm_token', null); S.token = null;
   showLogin();
 }
 async function showLogin(msg) {
   $('#app').innerHTML = `<div class="login"><div class="box">
-    <div class="brand" style="color:var(--ink);padding:0"><div class="dot" style="color:#fff">S</div><div>Spectronik CRM<small style="color:var(--muted)">Spectronik · Area65</small></div></div>
+    <div class="brand" style="color:var(--ink);padding:0"><div class="dot" style="color:#fff">C</div><div>Company CRM<small style="color:var(--muted)">Spectronik · Area65 · First Element</small></div></div>
     <h1>Sign in</h1><div class="muted small" style="margin-bottom:18px">Pick your name and enter your 6-digit PIN.</div>
     <div id="lg-body"><div class="muted">Loading…</div></div></div></div>`;
   try {
@@ -361,23 +364,44 @@ async function showLogin(msg) {
       if (!/^\d{6}$/.test(p)) { $('#lg-err').textContent = 'PIN is 6 digits.'; return; }
       $('#lg-go').disabled = true;
       try {
-        const res = await gs('login', u, p);
+        const res = await gs('login', u, p, urlCrmParam() || store('crm_id') || '');
         if (!res.ok) { $('#lg-err').textContent = res.error; $('#lg-go').disabled = false; return; }
         S.token = res.token; store('crm_token', S.token); store('crm_last_user', u);
-        S.boot = res.boot; route();
+        if (res.boot) { S.boot = res.boot; afterBoot(); route(); }
+        else showCrmPicker(res.crms);
       } catch (e) { $('#lg-err').textContent = e.message || e; $('#lg-go').disabled = false; }
     };
     $('#lg-go').onclick = submit; $('#lg-p').onkeydown = e => { if (e.key === 'Enter') submit(); };
     $('#lg-p').focus();
   } catch (e) { $('#lg-body').innerHTML = `<div class="alert">${esc(e.message || e)}</div>`; }
 }
-function logout(expired) { store('crm_token', null); S.token = null; S.boot = null; S.cache = {}; closeModal(); showLogin(expired ? 'Session expired — please sign in again.' : ''); }
+/* ---- Several CRMs: pick one after sign-in, switch from the sidebar ---- */
+function urlCrmParam() { try { return new URLSearchParams(location.search).get('crm') || ''; } catch (e) { return ''; } }
+function afterBoot() {
+  S.crm = S.boot.crm.id; store('crm_id', S.crm);
+  try { document.title = S.boot.crm.name + ' CRM'; } catch (e) { }
+}
+function showCrmPicker(crms) {
+  $('#app').innerHTML = `<div class="login"><div class="box">
+    <h1>Choose a CRM</h1><div class="muted small" style="margin-bottom:16px">You have access to ${crms.length} CRMs. You can switch later from the sidebar.</div>
+    ${crms.map(c => `<button class="btn" style="width:100%;justify-content:center;margin-bottom:8px;padding:12px" onclick="openCrm('${esc(c.id)}')">${esc(c.name)}</button>`).join('')}
+    <div id="pk-err" class="err" style="margin-top:8px"></div></div></div>`;
+}
+async function openCrm(id) {
+  S.crm = id;
+  let r;
+  try { r = await gs('api', JSON.stringify({ token: S.token, crm: S.crm, action: 'bootstrap' })); } catch (e) { r = { ok: false, error: e.message }; }
+  if (!r.ok) { if (r.error === 'SESSION_EXPIRED') return logout(true); const el = $('#pk-err'); if (el) el.textContent = r.error; else fail(new Error(r.error)); return; }
+  S.boot = r.data; S.cache = {}; afterBoot(); S.route = 'dashboard'; route();
+}
+function logout(expired) { store('crm_token', null); store('crm_id', null); S.token = null; S.crm = null; S.boot = null; S.cache = {}; closeModal(); showLogin(expired ? 'Session expired — please sign in again.' : ''); }
 
 /* ======================= Shell & routing ======================= */
 function shell(active, inner) {
   const me = S.boot.me;
   return `<div class="shell"><aside class="side">
-    <div class="brand"><div class="dot">S</div><div>Spectronik CRM<small>Spectronik · Area65</small></div></div>
+    <div class="brand"><div class="dot">${esc(S.boot.crm.name[0] || 'C')}</div><div>${esc(S.boot.crm.name)}<small>CRM</small></div></div>
+    ${S.boot.crms.length > 1 ? `<select class="in" style="margin:0 0 12px;background:#18303F;color:#fff;border-color:#24404F" onchange="openCrm(this.value)" title="Switch CRM">${opts(S.boot.crms.map(c => ({ v: c.id, l: 'Switch to: ' + c.name })), S.boot.crm.id)}</select>` : ''}
     <nav class="nav">
       <a class="${active === 'dash' ? 'on' : ''}" onclick="go('#/dashboard')">${ICON.dash}<span>Dashboard</span></a>
       <a class="${active === 'cust' ? 'on' : ''}" onclick="go('#/customers')">${ICON.cust}<span>Customers</span></a>
@@ -448,7 +472,7 @@ function viewDashboard() {
     ${S.dispCcy !== 'SGD' ? `<div class="alert info">Shown in ${S.dispCcy} by converting SGD at today's rate (${cfg.fx[S.dispCcy]} SGD per ${S.dispCcy}). Paid revenue was received in SGD.</div>` : ''}
     <div class="kpis">
       <div class="card kpi green"><div class="l">Revenue received ${D.year}</div><div class="v">${disp(D.revenueYTD)}</div><div class="s">All time ${disp(D.revenueAll)}</div></div>
-      <div class="card kpi"><div class="l">PO received, awaiting payment</div><div class="v">${disp(m.unpaidNotDelivered)}</div><div class="s">${m.counts.unpaidNotDelivered} deal(s) — order book</div></div>
+      <div class="card kpi"><div class="l">Awaiting PO</div><div class="v">${disp((D.pipeline.find(p => p.stage === 'Awaiting PO') || {}).openSGD || 0)}</div><div class="s">${(D.pipeline.find(p => p.stage === 'Awaiting PO') || {}).count || 0} deal(s) — open value</div></div>
       <div class="card kpi amber"><div class="l">Paid, not delivered</div><div class="v">${disp(m.paidNotDelivered)}</div><div class="s">${m.counts.paidNotDelivered} deal(s) — we owe goods</div></div>
       <div class="card kpi ${m.unpaidDelivered > 0 ? 'red' : ''}"><div class="l">Delivered, not paid</div><div class="v">${disp(m.unpaidDelivered)}</div><div class="s">${m.counts.unpaidDelivered} deal(s) — collect payment</div></div>
       <div class="card kpi accent"><div class="l">Weighted pipeline</div><div class="v">${disp(D.pipelineWeightedSGD)}</div><div class="s">of ${disp(D.pipelineTotalSGD)} open</div></div>
@@ -462,7 +486,7 @@ function viewDashboard() {
     <div class="cols even">
       <div class="card"><div class="hd"><h3>Money position — won deals</h3><span class="note">Paid = SGD actually received</span></div><div class="bd flush">
         <table class="t"><tbody>
-          <tr><td><span class="b st-Awaiting">1 · PO received, not paid</span><div class="small muted" style="margin-top:4px">Waiting for the customer's payment</div></td><td class="num"><b>${disp(m.unpaidNotDelivered)}</b><div class="small muted">${m.counts.unpaidNotDelivered} deal(s)</div></td></tr>
+          <tr><td><span class="b st-Awaiting">1 · Awaiting PO</span><div class="small muted" style="margin-top:4px">Open value; deposits already received are counted under Paid</div></td><td class="num"><b>${disp((D.pipeline.find(p => p.stage === 'Awaiting PO') || {}).openSGD || 0)}</b><div class="small muted">${(D.pipeline.find(p => p.stage === 'Awaiting PO') || {}).count || 0} deal(s)</div></td></tr>
           <tr><td><span class="b st-Formal">2 · Paid, not delivered</span><div class="small muted" style="margin-top:4px">We owe goods — ship</div></td><td class="num"><b>${disp(m.paidNotDelivered)}</b><div class="small muted">${m.counts.paidNotDelivered} deal(s)</div></td></tr>
           <tr><td><span class="b st-Paid">3 · Paid and delivered</span><div class="small muted" style="margin-top:4px">Done</div></td><td class="num"><b>${disp(m.paidDelivered)}</b><div class="small muted">${m.counts.paidDelivered} deal(s)</div></td></tr>
           <tr><td><span class="b st-Lost">4 · Delivered, not paid</span><div class="small muted" style="margin-top:4px">Goods shipped, payment still due</div></td><td class="num"><b>${disp(m.unpaidDelivered)}</b><div class="small muted">${m.counts.unpaidDelivered} deal(s)</div></td></tr>
@@ -735,9 +759,9 @@ function viewDeals() {
     <div class="ph"><div><h1>Deals</h1><div class="sub">${rows.length} shown · open value SGD ${nf0.format(total)} · weighted SGD ${nf0.format(wt)}</div></div></div>
     <div class="chips" style="margin-bottom:10px">${chip('open', 'All open')}${S.boot.config.stages.filter(s => s.name !== 'Paid' && s.name !== 'Lost').map(s => chip(s.name, s.name)).join('')}${chip('dormant', 'Dormant')}${chip('won', 'Won')}${chip('lost', 'Lost')}${chip('overdue', 'Overdue follow-up')}${chip('novalue', 'No value')}${chip('all', 'Everything')}</div>
     <div class="card"><div class="hd"><div class="row" style="flex:1"><input class="in" style="max-width:260px" placeholder="Filter deals" value="${esc(f.q)}" oninput="S.filters.deals.q=this.value;clearTimeout(window._dt);window._dt=setTimeout(()=>{rerender();const i=document.querySelector('.card .hd input');i.focus();i.setSelectionRange(i.value.length,i.value.length)},250)">
-      <select class="in" style="max-width:160px" onchange="S.filters.deals.brand=this.value;rerender()">${opts(list('Brand'), f.brand, 'All brands')}</select></div></div>
+</div></div>
     <div class="bd flush tablewrap">${rows.length ? `<table class="t"><thead><tr><th>Deal</th><th>Customer</th><th>Stage</th><th class="num">Value</th><th class="num">Weighted (SGD)</th><th>Payment</th><th>Delivery</th><th>Last contact</th><th>Next action</th></tr></thead><tbody>
-      ${rows.map(d => `<tr class="click" onclick="go('#/deal/${d.DealID}')"><td><div class="mono faint">${d.DealID} · ${esc(d.Brand)}</div><b>${esc(d.Title)}</b></td><td>${esc(custName(d.CustomerID))}${d.Channel === 'Distributor' ? `<div class="small muted">via ${esc(custName(d.DistributorID))}</div>` : ''}</td><td>${stageBadge(d.effectiveStage)}</td><td class="num">${d.value ? money(d.value, d.Currency, 0) : '<span class="b st-Awaiting">no value</span>'}</td><td class="num">${money(d.weightedSGD, '', 0)}</td><td>${payFor(d)}</td><td class="small">${esc(d.DeliveryStatus || '—')}</td><td class="small muted nowrap">${ago(d.daysSince)}</td><td class="small ${d.overdue ? '' : 'muted'}" style="${d.overdue ? 'color:var(--red);font-weight:600' : ''}">${d.NextActionDate ? fdt(d.NextActionDate) : '—'}<div>${esc(d.NextAction || '')}</div></td></tr>`).join('')}
+      ${rows.map(d => `<tr class="click" onclick="go('#/deal/${d.DealID}')"><td><div class="mono faint">${d.DealID}</div><b>${esc(d.Title)}</b></td><td>${esc(custName(d.CustomerID))}${d.Channel === 'Distributor' ? `<div class="small muted">via ${esc(custName(d.DistributorID))}</div>` : ''}</td><td>${stageBadge(d.effectiveStage)}</td><td class="num">${d.value ? money(d.value, d.Currency, 0) : '<span class="b st-Awaiting">no value</span>'}</td><td class="num">${money(d.weightedSGD, '', 0)}</td><td>${payFor(d)}</td><td class="small">${esc(d.DeliveryStatus || '—')}</td><td class="small muted nowrap">${ago(d.daysSince)}</td><td class="small ${d.overdue ? '' : 'muted'}" style="${d.overdue ? 'color:var(--red);font-weight:600' : ''}">${d.NextActionDate ? fdt(d.NextActionDate) : '—'}<div>${esc(d.NextAction || '')}</div></td></tr>`).join('')}
     </tbody></table>` : '<div class="empty">No deals match this filter.</div>'}</div></div>`);
 }
 
@@ -759,7 +783,7 @@ function renderDeal(id) {
   const pic = contact(d.PicContactID), dpic = contact(d.DistributorPicID);
   $('#app').innerHTML = shell('deal', `
     <div class="dhead"><div>
-      <div class="small muted"><a onclick="go('#/deals')">Deals</a> / <span class="mono">${d.DealID}</span> · ${esc(d.Brand)}</div>
+      <div class="small muted"><a onclick="go('#/deals')">Deals</a> / <span class="mono">${d.DealID}</span></div>
       <h1>${esc(d.Title)}</h1>
       <div class="row"><a onclick="go('#/customer/${d.CustomerID}')"><b>${esc(c ? c.Name : d.CustomerID)}</b></a>${d.Channel === 'Distributor' ? `<span class="muted">via <a onclick="go('#/customer/${d.DistributorID}')">${esc(custName(d.DistributorID))}</a></span>` : ''}${stageBadge(d.effectiveStage)}${(d.won || d.paidCcy > 0) ? payBadge(d.payStatus) : ""}${d.dormant ? `<span class="small muted">no contact for ${d.daysSince} days</span>` : ''}</div>
     </div><div class="row">${ed ? `${!d.lost && d.Stage !== 'Paid' ? `<select class="in" style="width:auto" onchange="quickStage('${id}',this.value)">${opts(S.boot.config.stages.map(s => ({ v: s.name, l: 'Move to: ' + s.name + ' (' + s.prob + '%)' })), d.Stage)}</select>` : ''}<button class="btn" onclick="paymentForm('${id}')">+ Payment</button><button class="btn pri" onclick="dealForm('${id}')">Edit deal</button>` : ''}</div></div>
@@ -875,7 +899,7 @@ function dealForm(id, customerId, preset) {
   modal(isNew ? 'New deal' : 'Edit ' + d.DealID, `<div class="grid g3">
     <div class="sect spanall">Who & what</div>
     <div class="span2"><label class="f">Customer (end user) *</label><select id="f-cust" class="in">${opts(custOpts, d.CustomerID, '— pick customer —')}</select><div class="small muted" style="margin-top:3px">Not listed? <a onclick="closeModal();customerForm()">Create the customer first</a>.</div></div>
-    <div><label class="f">Brand</label><select id="f-brand" class="in">${opts(list('Brand'), d.Brand)}</select></div>
+    <div><label class="f">CRM</label><input id="f-brand" class="in" value="${esc(S.boot.crm.name)}" disabled></div>
     <div class="span2"><label class="f">Deal title *</label><input id="f-title" class="in" value="${esc(d.Title)}" placeholder="e.g. P-3000 genset for tower lamp"></div>
     <div><label class="f">Application</label><select id="f-app" class="in">${opts(list('Application'), d.Application, '—')}</select></div>
     <div><label class="f">Lead source *</label><select id="f-src" class="in" ${isNew ? '' : 'disabled'}>${opts(list('LeadSource').filter(x => isNew ? x !== 'Unknown (legacy)' : true), d.LeadSource, '— pick —')}</select>${isNew ? '' : '<div class="small faint" style="margin-top:3px">Fixed after creation</div>'}</div>
@@ -906,8 +930,8 @@ function dealForm(id, customerId, preset) {
     <div class="spanall"><label class="f">Notes</label><textarea id="f-notes" class="in" style="min-height:60px">${esc(d.Notes)}</textarea></div>
   </div>`, async () => {
     const items = [...document.querySelectorAll('#f-items tr')].map(tr => ({ ProductCode: tr.querySelector('.it-p').value, Description: tr.querySelector('.it-d').value, Qty: tr.querySelector('.it-q').value, UnitPrice: tr.querySelector('.it-u').value }));
-    const dealData = { DealID: id || '', CustomerID: v('f-cust'), Title: v('f-title'), Brand: v('f-brand'), Application: v('f-app'), LeadSource: v('f-src'), ReferredBy: v('f-ref'), Channel: v('f-chan'), DistributorID: v('f-chan') === 'Distributor' ? v('f-dist') : '', PicContactID: v('f-pic'), DistributorPicID: v('f-chan') === 'Distributor' ? v('f-dpic') : '', Stage: v('f-stage'), Currency: v('f-ccy'), PriceType: v('f-ptype'), LostReason: v('f-stage') === 'Lost' ? v('f-lr') : '', LostNote: v('f-stage') === 'Lost' ? v('f-ln') : '', Shipping: v('f-ship'), EstimatedValue: v('f-est'), DeliveryStatus: v('f-del'), DeliveredDate: v('f-deld'), FirstContact: v('f-first'), NextAction: v('f-next'), NextActionDate: localToSys(v('f-nextd')), NextActionBy: v('f-nextby'), NextActionEmail: v('f-nextem'), QuoteRef: v('f-qref'), SerialNumbers: v('f-sn'), Notes: v('f-notes') };
-    if (dealData.Stage === 'Paid' && (!id || deal(id).payStatus !== 'Paid')) throw new Error('Paid is set automatically when payments cover the deal value. Pick PO received and add the payment.');
+    const dealData = { DealID: id || '', CustomerID: v('f-cust'), Title: v('f-title'), Brand: S.boot.crm.name, Application: v('f-app'), LeadSource: v('f-src'), ReferredBy: v('f-ref'), Channel: v('f-chan'), DistributorID: v('f-chan') === 'Distributor' ? v('f-dist') : '', PicContactID: v('f-pic'), DistributorPicID: v('f-chan') === 'Distributor' ? v('f-dpic') : '', Stage: v('f-stage'), Currency: v('f-ccy'), PriceType: v('f-ptype'), LostReason: v('f-stage') === 'Lost' ? v('f-lr') : '', LostNote: v('f-stage') === 'Lost' ? v('f-ln') : '', Shipping: v('f-ship'), EstimatedValue: v('f-est'), DeliveryStatus: v('f-del'), DeliveredDate: v('f-deld'), FirstContact: v('f-first'), NextAction: v('f-next'), NextActionDate: localToSys(v('f-nextd')), NextActionBy: v('f-nextby'), NextActionEmail: v('f-nextem'), QuoteRef: v('f-qref'), SerialNumbers: v('f-sn'), Notes: v('f-notes') };
+    if (dealData.Stage === 'Paid' && (!id || deal(id).payStatus !== 'Paid')) throw new Error('Paid is set automatically when payments cover the deal value. Keep it at Awaiting PO and add the payment.');
     const newId = await call('saveDeal', { deal: dealData, items });
     closeModal(); toast(isNew ? 'Deal ' + newId + ' created' : 'Deal saved');
     if (isNew) go('#/deal/' + newId); else refreshDetail();
@@ -1002,10 +1026,10 @@ function viewSettings() {
         ${admin ? `<div class="row"><input id="ls-new" class="in" style="max-width:240px" placeholder="New value"><button class="btn sm" onclick="addListVal()">Add to list</button></div><div class="small muted" style="margin-top:6px">Don't rename values that are already in use — old records would stop matching. Add new ones instead.</div>` : ''}
       </div></div>
     </div>
-    ${admin ? `<div class="card" style="margin-bottom:14px"><div class="hd"><h3>Users, Roles, PINs & Reminder Emails</h3><span class="note">One PIN per person — email is used for follow-up reminders</span></div><div class="bd flush tablewrap"><table class="t"><thead><tr><th>Name</th><th>Email (for reminders)</th><th>Role</th><th>Active</th><th>New PIN</th><th></th></tr></thead><tbody>
-      ${S.boot.users.map((u, i) => `<tr><td><b>${esc(u.Name)}</b> <span class="mono faint">${u.UserID}</span></td><td><input id="u-e${i}" class="in" type="email" style="min-width:190px" value="${esc(u.Email || '')}" placeholder="user@spectronik.com"></td><td><select id="u-r${i}" class="in" style="width:110px">${opts(['Admin', 'Editor', 'Viewer'], u.Role)}</select></td><td><select id="u-a${i}" class="in" style="width:80px">${opts(['Yes', 'No'], u.Active || 'Yes')}</select></td><td><input id="u-p${i}" class="in pin" style="width:130px;font-size:14px;letter-spacing:4px" maxlength="6" inputmode="numeric" placeholder="keep"></td><td><button class="btn sm" onclick="saveUser(${i},'${u.UserID}','${esc(u.Name)}')">Save</button></td></tr>`).join('')}
-      <tr><td><input id="u-nn" class="in" placeholder="Name"></td><td><input id="u-ne" class="in" type="email" style="min-width:190px" placeholder="user@spectronik.com"></td><td><select id="u-nr" class="in" style="width:110px">${opts(['Editor', 'Viewer', 'Admin'], 'Editor')}</select></td><td></td><td><input id="u-np" class="in pin" style="width:130px;font-size:14px;letter-spacing:4px" maxlength="6" inputmode="numeric" placeholder="6 digits"></td><td><button class="btn sm pri" onclick="saveUser(-1)">Add user</button></td></tr>
-    </tbody></table><div class="small muted" style="padding:10px 16px">Viewer = read-only (e.g. investors). Editor = can add and edit records. Admin = also settings and users.</div></div></div>` : ''}
+    ${admin ? `<div class="card" style="margin-bottom:14px"><div class="hd"><h3>Users, Roles, PINs & Reminder Emails</h3><span class="note">One PIN per person — email is used for follow-up reminders</span></div><div class="bd flush tablewrap"><table class="t"><thead><tr><th>Name</th><th>Email (for reminders)</th><th>Role</th><th>CRM access</th><th>Active</th><th>New PIN</th><th></th></tr></thead><tbody>
+      ${S.boot.users.map((u, i) => `<tr><td><b>${esc(u.Name)}</b> <span class="mono faint">${u.UserID}</span></td><td><input id="u-e${i}" class="in" type="email" style="min-width:190px" value="${esc(u.Email || '')}" placeholder="user@spectronik.com"></td><td><select id="u-r${i}" class="in" style="width:110px">${opts(['Admin', 'Editor', 'Viewer'], u.Role)}</select></td><td>${u.Role === 'Admin' ? '<span class="small muted">All (Admin)</span>' : S.boot.crmsAll.map(c => `<label class="small" style="display:flex;align-items:center;gap:5px;white-space:nowrap;margin:3px 0"><input type="checkbox" class="u-acc${i}" value="${esc(c.id)}" ${(u.Access === 'ALL' || String(u.Access).split(',').includes(c.id)) ? 'checked' : ''}> ${esc(c.name)}</label>`).join('')}</td><td><select id="u-a${i}" class="in" style="width:80px">${opts(['Yes', 'No'], u.Active || 'Yes')}</select></td><td><input id="u-p${i}" class="in pin" style="width:130px;font-size:14px;letter-spacing:4px" maxlength="6" inputmode="numeric" placeholder="keep"></td><td><button class="btn sm" onclick="saveUser(${i},'${u.UserID}','${esc(u.Name)}')">Save</button></td></tr>`).join('')}
+      <tr><td><input id="u-nn" class="in" placeholder="Name"></td><td><input id="u-ne" class="in" type="email" style="min-width:190px" placeholder="user@spectronik.com"></td><td><select id="u-nr" class="in" style="width:110px">${opts(['Editor', 'Viewer', 'Admin'], 'Editor')}</select></td><td>${S.boot.crmsAll.map(c => `<label class="small" style="display:flex;align-items:center;gap:5px;white-space:nowrap;margin:3px 0"><input type="checkbox" class="u-accn" value="${esc(c.id)}" ${c.id === S.boot.crm.id ? 'checked' : ''}> ${esc(c.name)}</label>`).join('')}</td><td></td><td><input id="u-np" class="in pin" style="width:130px;font-size:14px;letter-spacing:4px" maxlength="6" inputmode="numeric" placeholder="6 digits"></td><td><button class="btn sm pri" onclick="saveUser(-1)">Add user</button></td></tr>
+    </tbody></table><div class="small muted" style="padding:10px 16px">Viewer = read-only (e.g. investors). Editor = can add and edit records. Admin = also settings and users, and always sees every CRM. CRM access: which company CRMs a non-Admin user can open (same name and PIN for all).</div></div></div>` : ''}
     <div class="card"><div class="hd"><h3>Products</h3><span class="note">Used for line items and product statistics</span></div><div class="bd flush tablewrap"><table class="t"><thead><tr><th>Code</th><th>Name</th><th>Category</th><th class="num">List price (USD)</th><th>Active</th>${admin ? '<th></th>' : ''}</tr></thead><tbody>
       ${cfg.products.map((p, i) => `<tr><td class="mono">${esc(p.code)}</td><td>${admin ? `<input class="in" id="pr-n${i}" value="${esc(p.name)}">` : esc(p.name)}</td><td>${admin ? `<input class="in" id="pr-c${i}" value="${esc(p.category)}" style="width:150px">` : esc(p.category)}</td><td class="num">${admin ? `<input class="in" id="pr-l${i}" type="number" step="any" value="${esc(p.listPriceUSD)}" style="width:110px">` : money(p.listPriceUSD, '', 0)}</td><td>${admin ? `<input type="checkbox" id="pr-a${i}" ${p.active ? 'checked' : ''}>` : (p.active ? 'Yes' : 'No')}</td>${admin ? `<td><button class="btn sm" onclick="saveProd(${i},'${esc(p.code)}')">Save</button></td>` : ''}</tr>`).join('')}
       ${admin ? `<tr><td><input class="in" id="pr-newc" placeholder="CODE" style="width:110px"></td><td><input class="in" id="pr-newn" placeholder="Name"></td><td><input class="in" id="pr-newcat" placeholder="Category" style="width:150px"></td><td class="num"><input class="in" id="pr-newl" type="number" step="any" style="width:110px"></td><td></td><td><button class="btn sm pri" onclick="saveProd(-1)">Add</button></td></tr>` : ''}
@@ -1035,7 +1059,9 @@ async function runRemindersNow() {
 }
 async function addListVal() { try { await call('addListValue', { list: v('ls-name'), value: v('ls-new') }); toast('Added'); rerender(); } catch (e) { fail(e); } }
 async function saveUser(i, uid, name) {
-  const data = i < 0 ? { Name: v('u-nn'), Email: v('u-ne'), Role: v('u-nr'), Pin: v('u-np'), Active: 'Yes' } : { UserID: uid, Name: name, Email: v('u-e' + i), Role: v('u-r' + i), Active: v('u-a' + i), Pin: v('u-p' + i) };
+  const acc = sel => [...document.querySelectorAll(sel)].filter(x => x.checked).map(x => x.value);
+  const data = i < 0 ? { Name: v('u-nn'), Email: v('u-ne'), Role: v('u-nr'), Pin: v('u-np'), Active: 'Yes', Access: acc('.u-accn') } : { UserID: uid, Name: name, Email: v('u-e' + i), Role: v('u-r' + i), Active: v('u-a' + i), Pin: v('u-p' + i), Access: v('u-r' + i) === 'Admin' ? ['ALL'] : acc('.u-acc' + i) };
+  if (data.Role !== 'Admin' && !data.Access.length) { fail(new Error('Tick at least one CRM for this user.')); return; }
   try { await call('saveUser', data); toast('User saved'); rerender(); } catch (e) { fail(e); }
 }
 async function saveProd(i, code) {
