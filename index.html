@@ -206,7 +206,7 @@ window.CRM_API_URL = 'https://script.google.com/macros/s/AKfycbxajDpngogll-tK0Ws
 <div id="loading" class="loading hidden"></div>
 <script>
 /* ======================= Runtime bridge ======================= */
-const S = { token: null, crm: null, boot: null, dispCcy: 'SGD', cache: {}, filters: { deals: { stage: 'open', brand: '', q: '' }, customers: { q: '', seg: '', tier: '', key: false } } };
+const S = { token: null, crm: null, boot: null, dispCcy: 'SGD', cache: {}, filters: { deals: { stage: 'open', brand: '', q: '' }, customers: { q: '', seg: '', tier: '', key: false, arch: false } }, draft: null };
 function store(k, v) { try { if (v === undefined) return sessionStorage.getItem(k); if (v === null) sessionStorage.removeItem(k); else sessionStorage.setItem(k, v); } catch (e) { return null; } }
 let busy = 0;
 function setBusy(d) { busy += d; document.getElementById('loading').classList.toggle('hidden', busy <= 0); }
@@ -288,7 +288,17 @@ function toDtInput(d) {
 }
 function ago(days) { if (days == null) return '—'; if (days <= 0) return 'today'; if (days === 1) return '1 day ago'; return days + ' days ago'; }
 function stageKey(s) { return String(s || '').split(' ')[0]; }
-function stageBadge(s) { return `<span class="b st-${esc(stageKey(s))}">${esc(s)}</span>`; }
+const R = () => S.boot.config.roles;
+// Stage colour by role: paid = green, lost = red, last open stage = amber, other open = slate, Dormant = grey.
+function stageBadge(s) {
+  let k = 'Enquiry';
+  try {
+    const st = S.boot.config.stages, me = st.find(x => x.name === s), open = st.filter(x => x.kind === 'open');
+    if (s === 'Dormant') k = 'Dormant'; else if (me && me.kind === 'paid') k = 'Paid'; else if (me && me.kind === 'lost') k = 'Lost';
+    else if (me && open.length > 1 && open[open.length - 1].name === s) k = 'Awaiting';
+  } catch (e) { }
+  return `<span class="b st-${k}">${esc(s)}</span>`;
+}
 function payBadge(s) { return s && s !== '—' ? `<span class="b pay-${esc(s)}">${esc(s)}</span>` : '<span class="faint">—</span>'; }
 function payFor(d) { return (d.won || d.paidCcy > 0) ? payBadge(d.payStatus) : '<span class="faint">—</span>'; }
 function tierBadge(t) { return `<span class="b tier tier-${esc(t)}" title="Value tier (paid + weighted open value)">${esc(t)}</span>`; }
@@ -298,12 +308,8 @@ function dirBadge(dir, tp) {
   return '<span class="b dir-in">↙ From customer</span>';
 }
 function methodList() {
-  const raw = list('ActivityType');
-  const clean = ['Email', 'WhatsApp', 'Call / Zoom', 'Meeting / visit', 'Quotation', 'Proforma / invoice', 'Note'];
-  raw.forEach(x => {
-    if (!/^(email in|email out|quotation sent|proforma \/ invoice sent|next action)$/i.test(x) && !clean.includes(x)) clean.push(x);
-  });
-  return clean;
+  const raw = list('ActivityType').filter(x => !/^(email in|email out|quotation sent|proforma \/ invoice sent|next action)$/i.test(x));
+  return raw.length ? raw : ['Email', 'WhatsApp', 'Call / Zoom', 'Meeting / visit', 'Quotation', 'Proforma / invoice', 'Note'];
 }
 function cust(id) { return S.boot.customers.find(c => c.CustomerID === id) || null; }
 function custName(id) { const c = cust(id); return c ? c.Name : (id || '—'); }
@@ -315,7 +321,9 @@ function opts(arr, sel, blank) { return (blank !== undefined ? `<option value=""
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), 3200); }
 function can(role) { const r = { Viewer: 1, Editor: 2, Admin: 3 }; return (r[S.boot.me.role] || 0) >= r[role]; }
 function go(hash) {
-  S.route = String(hash).replace(/^#\/?/, '') || 'dashboard';
+  const next = String(hash).replace(/^#\/?/, '') || 'dashboard';
+  if (next === 'settings' && S.route !== 'settings') S.draft = null;   // fresh copy each time Settings is opened
+  S.route = next;
   try { if (google.script.history) google.script.history.push({ r: S.route }, null, S.route); } catch (e) { }
   if (S.boot) route();
 }
@@ -509,7 +517,7 @@ function viewDashboard() {
 function viewCustomers() {
   const f = S.filters.customers;
   const q = f.q.toLowerCase();
-  const rows = S.boot.customers.filter(c => (!q || (c.Name + ' ' + c.CustomerID + ' ' + c.Country).toLowerCase().includes(q)) && (!f.seg || c.Segment === f.seg) && (!f.tier || c.tier === f.tier) && (!f.key || c.KeyAccount === 'Yes'))
+  const rows = S.boot.customers.filter(c => (!q || (c.Name + ' ' + c.CustomerID + ' ' + c.Country).toLowerCase().includes(q)) && (!f.seg || c.Segment === f.seg) && (!f.tier || c.tier === f.tier) && (!f.key || c.KeyAccount === 'Yes') && (f.arch ? c.Archived === 'Yes' : c.Archived !== 'Yes'))
     .sort((a, b) => b.tierScore - a.tierScore || String(a.Name).localeCompare(b.Name));
   $('#app').innerHTML = shell('cust', `
     <div class="ph"><div><h1>Customers</h1><div class="sub">${S.boot.customers.length} organisations · one ID each, forever</div></div></div>
@@ -518,6 +526,7 @@ function viewCustomers() {
       <select class="in" style="max-width:200px" onchange="S.filters.customers.seg=this.value;rerender()">${opts(list('Segment'), f.seg, 'All segments')}</select>
       <select class="in" style="max-width:130px" onchange="S.filters.customers.tier=this.value;rerender()">${opts(['A', 'B', 'C', '—'].map(t => ({ v: t, l: 'Tier ' + t })), f.tier, 'All tiers')}</select>
       <label class="row small" style="gap:5px"><input type="checkbox" ${f.key ? 'checked' : ''} onchange="S.filters.customers.key=this.checked;rerender()"> Key accounts only</label>
+      <label class="row small" style="gap:5px"><input type="checkbox" ${f.arch ? 'checked' : ''} onchange="S.filters.customers.arch=this.checked;rerender()"> Show archived only</label>
     </div></div>
     <div class="bd flush tablewrap">${rows.length ? `<table class="t"><thead><tr><th>ID</th><th>Customer</th><th>Country</th><th>Segment</th><th>Status</th><th>Tier</th><th class="num">Paid (SGD)</th><th class="num">Weighted open</th><th class="num">Deals</th><th>Last contact</th></tr></thead><tbody>
       ${rows.map(c => `<tr class="click" onclick="go('#/customer/${c.CustomerID}')"><td class="mono faint">${c.CustomerID}</td><td><b>${esc(c.Name)}</b> ${c.KeyAccount === 'Yes' ? '<span class="star" title="Key account">★</span>' : ''}</td><td>${esc(c.Country)}</td><td class="small">${esc(c.Segment || '—')}</td><td><span class="b out">${c.status}</span></td><td>${tierBadge(c.tier)}</td><td class="num">${money(c.paidSGD, '', 0)}</td><td class="num">${money(c.weightedSGD, '', 0)}</td><td class="num">${c.dealCount}</td><td class="small muted nowrap">${fdate(c.lastContact)}</td></tr>`).join('')}
@@ -557,7 +566,8 @@ function renderCustomer(id) {
       <h1>${esc(c.Name)} ${c.KeyAccount === 'Yes' ? '<span class="b key">★ Key account</span>' : ''}</h1>
       <div class="row">${tierBadge(c.tier)}<span class="b out">${c.status}</span><span class="b">${esc(c.Segment || 'No segment')}</span><span class="b">${esc(c.Country)}</span>${c.OriginalSource ? `<span class="b" title="How they first found us">First source: ${esc(c.OriginalSource)}</span>` : ''}</div>
       ${c.KeyAccount === 'Yes' && c.KeyAccountNote ? `<div class="small muted" style="margin-top:8px">★ ${esc(c.KeyAccountNote)}</div>` : ''}
-    </div><div class="row">${ed ? `<button class="btn" onclick="customerForm('${id}')">Edit</button><button class="btn pri" onclick="dealForm(null,'${id}')">+ New deal</button>` : ''}</div></div>
+    </div><div class="row">${ed ? `<button class="btn" onclick="customerForm('${id}')">Edit</button><button class="btn" onclick="archiveItem('customer','${id}',${c.Archived !== 'Yes'})">${c.Archived === 'Yes' ? 'Restore' : 'Archive'}</button>${c.Archived !== 'Yes' ? `<button class="btn pri" onclick="dealForm(null,'${id}')">+ New deal</button>` : ''}` : ''}${can('Admin') ? `<button class="btn danger" onclick="deleteCustomerUI('${id}')">Delete</button>` : ''}</div></div>
+    ${c.Archived === 'Yes' ? `<div class="alert" style="background:var(--gray-bg);border-color:var(--line)"><b>Archived customer.</b> This customer and all their deals are hidden from lists, dashboard and reminders.${ed ? ` <a onclick="archiveItem('customer','${id}',false)">Restore</a>` : ''}</div>` : ''}
     <div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr))">
       <div class="card kpi green"><div class="l">Paid to date</div><div class="v">${money(c.paidSGD, 'SGD', 0)}</div></div>
       <div class="card kpi accent"><div class="l">Weighted open</div><div class="v">${money(c.weightedSGD, 'SGD', 0)}</div></div>
@@ -570,7 +580,7 @@ function renderCustomer(id) {
         <div class="tl">${timelineHTML(det, false)}</div></div>
       <div>
         <div class="card" style="margin-bottom:14px"><div class="hd"><h3>Deals</h3></div><div class="bd flush">${deals.length ? `<table class="t"><tbody>${deals.map(d => `<tr class="click" onclick="go('#/deal/${d.DealID}')"><td><div class="mono faint">${d.DealID}</div><b>${esc(d.Title)}</b>${d.DistributorID === id && d.CustomerID !== id ? `<div class="small muted">for ${esc(custName(d.CustomerID))}</div>` : ''}</td><td class="right">${stageBadge(d.effectiveStage)}<div class="small muted" style="margin-top:4px">${money(d.value, d.Currency, 0)}</div></td></tr>`).join('')}</tbody></table>` : '<div class="empty">No deals yet.</div>'}</div></div>
-        <div class="card" style="margin-bottom:14px"><div class="hd"><h3>Contacts (PIC)</h3>${ed ? `<button class="btn sm" onclick="contactForm(null,'${id}')">+ Add</button>` : ''}</div><div class="bd flush">${contacts.length ? `<table class="t"><tbody>${contacts.map(p => `<tr><td><b>${esc(p.Name)}</b> <span class="muted small">${esc(p.Title)}</span><div class="small">${p.Email ? `<a href="mailto:${esc(p.Email)}">${esc(p.Email)}</a>` : ''} ${esc(p.Phone)}</div></td><td class="right">${ed ? `<button class="btn sm ghost" onclick="contactForm('${p.ContactID}')">Edit</button>` : ''}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No contacts yet.</div>'}</div></div>
+        <div class="card" style="margin-bottom:14px"><div class="hd"><h3>Contacts (PIC)</h3>${ed ? `<button class="btn sm" onclick="contactForm(null,'${id}')">+ Add</button>` : ''}</div><div class="bd flush">${contacts.length ? `<table class="t"><tbody>${contacts.map(p => `<tr><td><b>${esc(p.Name)}</b> <span class="muted small">${esc(p.Title)}</span><div class="small">${p.Email ? `<a href="mailto:${esc(p.Email)}">${esc(p.Email)}</a>` : ''} ${esc(p.Phone)}</div></td><td class="right">${ed ? `<button class="btn sm ghost" onclick="contactForm('${p.ContactID}')">Edit</button>${can('Admin') ? `<button class="btn sm ghost danger" onclick="deleteContactUI('${p.ContactID}')">Delete</button>` : ''}` : ''}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No contacts yet.</div>'}</div></div>
         <div class="card"><div class="hd"><h3>Details</h3></div><div class="bd"><dl class="dl">
           <dt>Customer ID</dt><dd class="mono">${c.CustomerID}</dd><dt>Website</dt><dd>${c.Website ? `<a href="${esc(/^https?:/.test(c.Website) ? c.Website : 'https://' + c.Website)}" target="_blank">${esc(c.Website)}</a>` : '—'}</dd>
           <dt>Notes</dt><dd>${esc(c.Notes || '—')}</dd><dt>Created</dt><dd class="small muted">${fdate(c.CreatedAt)} by ${esc(c.CreatedBy || '—')}</dd></dl></div></div>
@@ -749,15 +759,16 @@ function refreshDetail() { rerender(); }
 /* ======================= Deals ======================= */
 function viewDeals() {
   const f = S.filters.deals, q = f.q.toLowerCase();
-  const stageF = { open: d => !d.lost && d.Stage !== 'Paid' && !d.dormant, won: d => d.won, lost: d => d.lost, dormant: d => d.dormant, novalue: d => d.valueMissing, overdue: d => d.overdue, all: () => true };
-  const pick = stageF[f.stage] || (d => d.effectiveStage === f.stage);
+  const stageF = { open: d => !d.lost && d.Stage !== R().paid && !d.dormant, archived: d => d.archived, won: d => d.won, lost: d => d.lost, dormant: d => d.dormant, novalue: d => d.valueMissing, overdue: d => d.overdue, all: () => true };
+  const base = stageF[f.stage] || (d => d.effectiveStage === f.stage);
+  const pick = f.stage === 'archived' ? (d => d.archived) : (d => !d.archived && base(d));
   const rows = S.boot.deals.filter(d => pick(d) && (!f.brand || d.Brand === f.brand) && (!q || (d.Title + ' ' + d.DealID + ' ' + custName(d.CustomerID)).toLowerCase().includes(q)))
     .sort((a, b) => String(b.DealID).localeCompare(a.DealID));
   const chip = (k, l) => `<button class="chip ${f.stage === k ? 'on' : ''}" onclick="S.filters.deals.stage='${k}';rerender()">${l}</button>`;
   const total = rows.reduce((s, d) => s + d.openSGD, 0), wt = rows.reduce((s, d) => s + d.weightedSGD, 0);
   $('#app').innerHTML = shell('deal', `
     <div class="ph"><div><h1>Deals</h1><div class="sub">${rows.length} shown · open value SGD ${nf0.format(total)} · weighted SGD ${nf0.format(wt)}</div></div></div>
-    <div class="chips" style="margin-bottom:10px">${chip('open', 'All open')}${S.boot.config.stages.filter(s => s.name !== 'Paid' && s.name !== 'Lost').map(s => chip(s.name, s.name)).join('')}${chip('dormant', 'Dormant')}${chip('won', 'Won')}${chip('lost', 'Lost')}${chip('overdue', 'Overdue follow-up')}${chip('novalue', 'No value')}${chip('all', 'Everything')}</div>
+    <div class="chips" style="margin-bottom:10px">${chip('open', 'All open')}${S.boot.config.stages.filter(s => s.kind === 'open').map(s => chip(s.name, s.name)).join('')}${chip('dormant', 'Dormant')}${chip('won', 'Won')}${chip('lost', 'Lost')}${chip('overdue', 'Overdue follow-up')}${chip('novalue', 'No value')}${chip('all', 'Everything')}${chip('archived', 'Archived')}</div>
     <div class="card"><div class="hd"><div class="row" style="flex:1"><input class="in" style="max-width:260px" placeholder="Filter deals" value="${esc(f.q)}" oninput="S.filters.deals.q=this.value;clearTimeout(window._dt);window._dt=setTimeout(()=>{rerender();const i=document.querySelector('.card .hd input');i.focus();i.setSelectionRange(i.value.length,i.value.length)},250)">
 </div></div>
     <div class="bd flush tablewrap">${rows.length ? `<table class="t"><thead><tr><th>Deal</th><th>Customer</th><th>Stage</th><th class="num">Value</th><th class="num">Weighted (SGD)</th><th>Payment</th><th>Delivery</th><th>Last contact</th><th>Next action</th></tr></thead><tbody>
@@ -772,10 +783,10 @@ function viewDeal(id) {
 }
 function renderDeal(id) {
   const d = deal(id), det = detFor('d', id), c = cust(d.CustomerID), ed = can('Editor');
-  const stages = S.boot.config.stages.filter(s => s.name !== 'Lost');
+  const stages = S.boot.config.stages.filter(s => s.kind !== 'lost');
   const idx = stages.findIndex(s => s.name === d.Stage);
   const cls = d.won ? 'won' : d.lost ? 'lost' : '';
-  const step = stages.map((s, i) => `<div class="${d.lost ? (i <= Math.max(0, stages.findIndex(x => d.stagesVisited.includes(x.name) && x.name !== 'Lost')) ? 'done' : '') : i < idx ? 'done' : i === idx ? 'now' : ''}" title="${esc(s.name)} · ${s.prob}%"></div>`).join('');
+  const step = stages.map((s, i) => `<div class="${d.lost ? (i <= Math.max(0, stages.findIndex(x => d.stagesVisited.includes(x.name) && x.kind !== 'lost')) ? 'done' : '') : i < idx ? 'done' : i === idx ? 'now' : ''}" title="${esc(s.name)} · ${s.prob}%"></div>`).join('');
   const items = det.items;
   const itemRows = items.map(i => { const p = product(i.ProductCode); const lp = p && p.listPriceUSD !== '' ? p.listPriceUSD : ''; const up = i.UnitPrice; const disc = (d.Currency === 'USD' && lp && up !== '') ? Math.round((1 - up / lp) * 100) : null;
     return `<tr><td><span class="mono">${esc(i.ProductCode)}</span><div class="small muted">${esc(p ? p.name : '')}${i.Description ? ' — ' + esc(i.Description) : ''}</div></td><td class="num">${i.Qty}</td><td class="num">${up === '' ? '<span class="faint">—</span>' : money(up, '', 2)}</td><td class="num faint">${lp === '' ? '—' : money(lp, 'USD', 0)}</td><td class="num">${disc == null ? '' : disc > 0 ? `<span class="b st-Awaiting">−${disc}%</span>` : disc < 0 ? `<span class="b">+${-disc}%</span>` : '<span class="b">list</span>'}</td><td class="num">${up === '' ? '—' : money(up * i.Qty, '', 2)}</td></tr>`; }).join('');
@@ -786,10 +797,11 @@ function renderDeal(id) {
       <div class="small muted"><a onclick="go('#/deals')">Deals</a> / <span class="mono">${d.DealID}</span></div>
       <h1>${esc(d.Title)}</h1>
       <div class="row"><a onclick="go('#/customer/${d.CustomerID}')"><b>${esc(c ? c.Name : d.CustomerID)}</b></a>${d.Channel === 'Distributor' ? `<span class="muted">via <a onclick="go('#/customer/${d.DistributorID}')">${esc(custName(d.DistributorID))}</a></span>` : ''}${stageBadge(d.effectiveStage)}${(d.won || d.paidCcy > 0) ? payBadge(d.payStatus) : ""}${d.dormant ? `<span class="small muted">no contact for ${d.daysSince} days</span>` : ''}</div>
-    </div><div class="row">${ed ? `${!d.lost && d.Stage !== 'Paid' ? `<select class="in" style="width:auto" onchange="quickStage('${id}',this.value)">${opts(S.boot.config.stages.map(s => ({ v: s.name, l: 'Move to: ' + s.name + ' (' + s.prob + '%)' })), d.Stage)}</select>` : ''}<button class="btn" onclick="paymentForm('${id}')">+ Payment</button><button class="btn pri" onclick="dealForm('${id}')">Edit deal</button>` : ''}</div></div>
+    </div><div class="row">${ed && !d.archived ? `${!d.lost && d.Stage !== R().paid ? `<select class="in" style="width:auto" onchange="quickStage('${id}',this.value)">${opts(S.boot.config.stages.map(s => ({ v: s.name, l: 'Move to: ' + s.name + ' (' + s.prob + '%)' })), d.Stage)}</select>` : ''}<button class="btn" onclick="paymentForm('${id}')">+ Payment</button><button class="btn pri" onclick="dealForm('${id}')">Edit deal</button>` : ''}${ed ? `<button class="btn" onclick="archiveItem('deal','${id}',${!d.archived})">${d.archived ? 'Restore' : 'Archive'}</button>` : ''}${can('Admin') ? `<button class="btn danger" onclick="deleteDealUI('${id}')">Delete</button>` : ''}</div></div>
     <div class="stepper ${cls}">${step}</div><div class="stepl"><span>${esc(stages[0].name)}</span><span>${esc(stages[stages.length - 1].name)}</span></div>
-    ${d.Stage === 'Lost' ? `<div class="alert" style="background:var(--red-bg);border-color:#F4C7C2;color:var(--red)"><b>Lost:</b> ${esc(d.LostReason || 'no reason given')}${d.LostNote ? ' — ' + esc(d.LostNote) : ''}</div>` : ''}
-    ${d.Stage === 'Paid' && d.payStatus !== 'Paid' ? `<div class="alert">Stage is Paid but payments recorded don't cover the deal value (${money(d.outstanding, d.Currency, 2)} outstanding).</div>` : ''}
+    ${d.archived ? `<div class="alert" style="background:var(--gray-bg);border-color:var(--line)"><b>Archived.</b> Hidden from lists, dashboard and reminders.${ed ? ` <a onclick="archiveItem('deal','${id}',false)">Restore</a>` : ''}</div>` : ''}
+    ${d.lost ? `<div class="alert" style="background:var(--red-bg);border-color:#F4C7C2;color:var(--red)"><b>Lost:</b> ${esc(d.LostReason || 'no reason given')}${d.LostNote ? ' — ' + esc(d.LostNote) : ''}</div>` : ''}
+    ${d.Stage === R().paid && d.payStatus !== 'Paid' ? `<div class="alert">Stage is Paid but payments recorded don't cover the deal value (${money(d.outstanding, d.Currency, 2)} outstanding).</div>` : ''}
     <div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr))">
       <div class="card kpi"><div class="l">Deal value</div><div class="v">${d.value ? money(d.value, d.Currency, 0) : '—'}</div><div class="s">${d.value && d.Currency !== 'SGD' ? '≈ ' + money(d.value * d.rate, 'SGD', 0) + ' at ' + d.rate : (items.some(i => i.UnitPrice !== '') ? 'From line items' : 'Estimated value')}</div></div>
       <div class="card kpi green"><div class="l">Received</div><div class="v">${money(d.paidSGD, 'SGD', 0)}</div><div class="s">${money(d.paidCcy, d.Currency, 0)} paid</div></div>
@@ -826,8 +838,8 @@ function num(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
 
 async function quickStage(id, stage) {
   const d = deal(id);
-  if (stage === 'Lost') { dealForm(id, null, { Stage: 'Lost' }); return; }
-  if (stage === 'Paid' && d.payStatus !== 'Paid') { toast('Record the payment instead — the deal moves to Paid automatically when fully paid.'); rerender(); return; }
+  if (stage === R().lost) { dealForm(id, null, { Stage: R().lost }); return; }
+  if (stage === R().paid && d.payStatus !== 'Paid') { toast('Record the payment instead — the deal moves to ' + R().paid + ' automatically when fully paid.'); rerender(); return; }
   const payload = {}; Object.keys(d).forEach(k => { if (/^[A-Z]/.test(k)) payload[k] = d[k]; });
   payload.Stage = stage;
   try { await call('saveDeal', { deal: payload }); toast('Moved to ' + stage); refreshDetail(); } catch (e) { fail(e); rerender(); }
@@ -889,7 +901,7 @@ function contactForm(contactId, customerId) {
 
 function dealForm(id, customerId, preset) {
   const isNew = !id;
-  const d = Object.assign({}, id ? deal(id) : { CustomerID: customerId || '', Brand: list('Brand')[0], Channel: 'Direct', Stage: 'Enquiry', Currency: 'USD', PriceType: 'Standard', DeliveryStatus: 'Not delivered', FirstContact: S.boot.today, NextActionBy: S.boot.me.name, NextActionEmail: '' }, preset || {});
+  const d = Object.assign({}, id ? deal(id) : { CustomerID: customerId || '', Brand: list('Brand')[0], Channel: 'Direct', Stage: S.boot.config.stages[0].name, Currency: 'USD', PriceType: 'Standard', DeliveryStatus: 'Not delivered', FirstContact: S.boot.today, NextActionBy: S.boot.me.name, NextActionEmail: '' }, preset || {});
   const custOpts = S.boot.customers.slice().sort((a, b) => a.Name.localeCompare(b.Name)).map(c => ({ v: c.CustomerID, l: c.Name + ' (' + c.CustomerID + ')' }));
   const prodOpts = S.boot.config.products.filter(p => p.active).map(p => ({ v: p.code, l: p.code + ' — ' + p.name }));
   const ccys = S.boot.config.fxRows.map(f => f.currency);
@@ -912,7 +924,7 @@ function dealForm(id, customerId, preset) {
     <div><label class="f">Stage *</label><select id="f-stage" class="in">${opts(S.boot.config.stages.map(s => ({ v: s.name, l: s.name + ' (' + s.prob + '%)' })), d.Stage)}</select></div>
     <div><label class="f">Currency</label><select id="f-ccy" class="in">${opts(ccys, d.Currency)}</select></div>
     <div><label class="f">Price type</label><select id="f-ptype" class="in">${opts(list('PriceType'), d.PriceType, '—')}</select></div>
-    <div id="w-lost" class="spanall grid g2 ${d.Stage === 'Lost' ? '' : 'hidden'}" style="gap:12px"><div><label class="f">Lost reason *</label><select id="f-lr" class="in">${opts(list('LostReason'), d.LostReason, '— pick —')}</select></div><div><label class="f">Lost note</label><input id="f-ln" class="in" value="${esc(d.LostNote)}"></div></div>
+    <div id="w-lost" class="spanall grid g2 ${d.Stage === R().lost ? '' : 'hidden'}" style="gap:12px"><div><label class="f">Lost reason *</label><select id="f-lr" class="in">${opts(list('LostReason'), d.LostReason, '— pick —')}</select></div><div><label class="f">Lost note</label><input id="f-ln" class="in" value="${esc(d.LostNote)}"></div></div>
     <div class="spanall"><label class="f">Line items — products quoted</label><table class="items" style="width:100%"><tbody id="f-items">${(existingItems.length ? existingItems : [{}]).map(itemRow).join('')}</tbody></table><button class="btn sm" onclick="document.getElementById('f-items').insertAdjacentHTML('beforeend', window._itemRow({}))">+ Add line</button></div>
     <div><label class="f">Shipping / other</label><input id="f-ship" class="in" type="number" step="any" value="${esc(d.Shipping)}"></div>
     <div><label class="f">Estimated value <span class="faint">(if no unit prices)</span></label><input id="f-est" class="in" type="number" step="any" value="${esc(d.EstimatedValue)}"></div>
@@ -930,8 +942,8 @@ function dealForm(id, customerId, preset) {
     <div class="spanall"><label class="f">Notes</label><textarea id="f-notes" class="in" style="min-height:60px">${esc(d.Notes)}</textarea></div>
   </div>`, async () => {
     const items = [...document.querySelectorAll('#f-items tr')].map(tr => ({ ProductCode: tr.querySelector('.it-p').value, Description: tr.querySelector('.it-d').value, Qty: tr.querySelector('.it-q').value, UnitPrice: tr.querySelector('.it-u').value }));
-    const dealData = { DealID: id || '', CustomerID: v('f-cust'), Title: v('f-title'), Brand: S.boot.crm.name, Application: v('f-app'), LeadSource: v('f-src'), ReferredBy: v('f-ref'), Channel: v('f-chan'), DistributorID: v('f-chan') === 'Distributor' ? v('f-dist') : '', PicContactID: v('f-pic'), DistributorPicID: v('f-chan') === 'Distributor' ? v('f-dpic') : '', Stage: v('f-stage'), Currency: v('f-ccy'), PriceType: v('f-ptype'), LostReason: v('f-stage') === 'Lost' ? v('f-lr') : '', LostNote: v('f-stage') === 'Lost' ? v('f-ln') : '', Shipping: v('f-ship'), EstimatedValue: v('f-est'), DeliveryStatus: v('f-del'), DeliveredDate: v('f-deld'), FirstContact: v('f-first'), NextAction: v('f-next'), NextActionDate: localToSys(v('f-nextd')), NextActionBy: v('f-nextby'), NextActionEmail: v('f-nextem'), QuoteRef: v('f-qref'), SerialNumbers: v('f-sn'), Notes: v('f-notes') };
-    if (dealData.Stage === 'Paid' && (!id || deal(id).payStatus !== 'Paid')) throw new Error('Paid is set automatically when payments cover the deal value. Keep it at Awaiting PO and add the payment.');
+    const dealData = { DealID: id || '', CustomerID: v('f-cust'), Title: v('f-title'), Brand: S.boot.crm.name, Application: v('f-app'), LeadSource: v('f-src'), ReferredBy: v('f-ref'), Channel: v('f-chan'), DistributorID: v('f-chan') === 'Distributor' ? v('f-dist') : '', PicContactID: v('f-pic'), DistributorPicID: v('f-chan') === 'Distributor' ? v('f-dpic') : '', Stage: v('f-stage'), Currency: v('f-ccy'), PriceType: v('f-ptype'), LostReason: v('f-stage') === R().lost ? v('f-lr') : '', LostNote: v('f-stage') === R().lost ? v('f-ln') : '', Shipping: v('f-ship'), EstimatedValue: v('f-est'), DeliveryStatus: v('f-del'), DeliveredDate: v('f-deld'), FirstContact: v('f-first'), NextAction: v('f-next'), NextActionDate: localToSys(v('f-nextd')), NextActionBy: v('f-nextby'), NextActionEmail: v('f-nextem'), QuoteRef: v('f-qref'), SerialNumbers: v('f-sn'), Notes: v('f-notes') };
+    if (dealData.Stage === R().paid && (!id || deal(id).payStatus !== 'Paid')) throw new Error(R().paid + ' is set automatically when payments cover the deal value. Keep it at an open stage and add the payment.');
     const newId = await call('saveDeal', { deal: dealData, items });
     closeModal(); toast(isNew ? 'Deal ' + newId + ' created' : 'Deal saved');
     if (isNew) go('#/deal/' + newId); else refreshDetail();
@@ -946,7 +958,7 @@ function dealForm(id, customerId, preset) {
   $('#f-cust').onchange = fillPics; $('#f-dist').onchange = fillPics;
   $('#f-src').onchange = () => $('#w-ref').classList.toggle('hidden', v('f-src') !== 'Referral');
   $('#f-chan').onchange = () => { const on = v('f-chan') === 'Distributor'; $('#w-dist').classList.toggle('hidden', !on); $('#w-dpic').classList.toggle('hidden', !on); };
-  $('#f-stage').onchange = () => $('#w-lost').classList.toggle('hidden', v('f-stage') !== 'Lost');
+  $('#f-stage').onchange = () => $('#w-lost').classList.toggle('hidden', v('f-stage') !== R().lost);
   document.querySelector('.modal').addEventListener('input', dealTotal);
   document.querySelector('.modal').addEventListener('change', dealTotal);
   dealTotal();
@@ -996,23 +1008,74 @@ function aiAndReminderBoxHTML() {
     + '<div class="small muted" style="margin-top:4px">Checks every 10 minutes (and immediately on save): one email about 24 hours before, one when the Next Action time arrives. After updating the code, click Disable then Enable once.</div>'
     + '</div>';
 }
+/* ======================= Settings (v0.4: edit everything, one Save per section) ======================= */
+function initDraft(sec) {
+  const cfg = S.boot.config, D = S.draft = S.draft && S.draft.crm === S.boot.crm.id ? S.draft : { crm: S.boot.crm.id, listName: 'LeadSource' };
+  if (!sec || sec === 'fx') { D.fx = cfg.fxRows.map(f => ({ currency: f.currency, rate: f.rate, note: f.note || '', isNew: false })); D.fxRemoved = []; }
+  if (!sec || sec === 'stages') { D.stages = cfg.stages.map(s => ({ orig: s.name, name: s.name, prob: s.prob, kind: s.kind })); D.stagesRemoved = []; }
+  if (!sec || sec === 'list') { D.list = (cfg.lists[D.listName] || []).map(x => ({ orig: x, value: x })); }
+  if (!sec || sec === 'products') { D.products = cfg.products.map(p => ({ code: p.code, name: p.name, category: p.category || '', listPriceUSD: p.listPriceUSD, active: p.active, isNew: false })); D.prodRemoved = []; }
+  if (!sec || sec === 'users') { D.users = (S.boot.users || []).map(u => ({ UserID: u.UserID, Name: u.Name, Email: u.Email || '', Role: u.Role, Active: u.Active || 'Yes', Pin: '', Access: u.Access === 'ALL' || !u.Access ? S.boot.crmsAll.map(c => c.id) : String(u.Access).split(','), isNew: false })); }
+}
+function dset(sec, i, field, val) { S.draft[sec][i][field] = val; }
+function rowMove(sec, i, dir) { const a = S.draft[sec], j = i + dir; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; rerender(); }
+function rowDel(sec, i) {
+  const a = S.draft[sec], r = a[i];
+  if (sec === 'fx' && !r.isNew) S.draft.fxRemoved.push(r.currency);
+  if (sec === 'products' && !r.isNew) S.draft.prodRemoved.push(r.code);
+  if (sec === 'stages' && r.orig) S.draft.stagesRemoved.push({ name: r.orig, moveTo: '' });
+  a.splice(i, 1); rerender();
+}
+function rowAdd(sec) {
+  const blank = { fx: { currency: '', rate: '', note: '', isNew: true }, stages: { orig: '', name: '', prob: 50, kind: 'open' }, list: { orig: '', value: '' },
+    products: { code: '', name: '', category: '', listPriceUSD: '', active: true, isNew: true }, users: { UserID: '', Name: '', Email: '', Role: 'Editor', Active: 'Yes', Pin: '', Access: [S.boot.crm.id], isNew: true } }[sec];
+  S.draft[sec].push(blank); rerender();
+}
+const secBtns = (sec, label) => `<div class="row" style="padding:12px 16px;border-top:1px solid var(--line2)"><button class="btn sm" onclick="rowAdd('${sec}')">+ Add ${label}</button><span style="flex:1"></span><button class="btn sm" onclick="initDraft('${sec}');rerender()">Discard changes</button><button class="btn pri sm" onclick="saveSection('${sec}')">Save ${label === 'value' ? 'list' : label + 's'}</button></div>`;
+const iconBtn = (t, act, title, cls = '') => `<button class="btn sm ghost ${cls}" title="${title}" onclick="${act}">${t}</button>`;
+
 function viewSettings() {
-  const cfg = S.boot.config, admin = can('Admin'), D = S.boot.dashboard;
-  const actual = {}; D.pipeline.forEach(p => actual[p.stage] = p);
+  const cfg = S.boot.config, admin = can('Admin'), D0 = S.boot.dashboard;
+  if (!S.draft || S.draft.crm !== S.boot.crm.id || !S.draft.fx) initDraft();
+  const D = S.draft;
+  const actual = {}; D0.pipeline.forEach(p => actual[p.stage] = p);
   const dis = admin ? '' : 'disabled';
-  const listNames = Object.keys(cfg.lists);
+  const ro = !admin;
+  const locked = (cfg.lockedValues || {})[D.listName] || [];
+  const dealsIn = name => S.boot.deals.filter(x => x.Stage === name).length;
+  const openNames = D.stages.filter(s => s.name && s.kind !== 'paid').map(s => s.name);   // never move deals straight to Paid
+  D.stagesRemoved.forEach(r => { if (!r.moveTo || !openNames.includes(r.moveTo)) r.moveTo = (D.stages.find(s => s.kind === 'open') || D.stages[0] || {}).name || ''; });
   $('#app').innerHTML = shell('set', `
-    <div class="ph"><div><h1>Settings</h1><div class="sub">${admin ? 'Changes apply to everyone immediately.' : 'Read-only — only Admins can change settings.'}</div></div></div>
+    <div class="ph"><div><h1>Settings — ${esc(S.boot.crm.name)}</h1><div class="sub">${admin ? 'Edit freely, then press the Save button of that section. Nothing changes until you save.' : 'Read-only — only Admins can change settings.'}</div></div></div>
     <div class="cols even">
-      <div class="card"><div class="hd"><h3>Exchange rates</h3><span class="note">SGD per 1 unit</span></div><div class="bd flush"><table class="t"><thead><tr><th>Currency</th><th>Rate</th><th>Note</th><th>Updated</th><th></th></tr></thead><tbody>
-        ${cfg.fxRows.map((f, i) => `<tr><td class="mono"><b>${esc(f.currency)}</b></td><td><input class="in" id="fx-r${i}" type="number" step="any" style="width:110px" value="${f.rate}" ${dis || (f.currency === 'SGD' ? 'disabled' : '')}></td><td><input class="in" id="fx-n${i}" value="${esc(f.note)}" ${dis}></td><td class="small muted nowrap">${fdate(f.updatedAt)}<br>${esc(f.updatedBy || '')}</td><td>${admin && f.currency !== 'SGD' ? `<button class="btn sm" onclick="saveFx('${f.currency}',${i})">Save</button>` : ''}</td></tr>`).join('')}
-        ${admin ? `<tr><td><input class="in" id="fx-newc" placeholder="JPY" style="width:70px"></td><td><input class="in" id="fx-newr" type="number" step="any" style="width:110px"></td><td><input class="in" id="fx-newn" placeholder="note"></td><td></td><td><button class="btn sm" onclick="saveFx(null)">Add</button></td></tr>` : ''}
-      </tbody></table><div class="small muted" style="padding:10px 16px">Rates only affect open (unpaid) amounts. Paid deals use the SGD actually received.</div></div></div>
-      <div class="card"><div class="hd"><h3>Stage probabilities</h3><span class="note">Assumptions until real data</span></div><div class="bd flush"><table class="t"><thead><tr><th>Stage</th><th>Assumed %</th><th class="num">Actual win % so far</th></tr></thead><tbody>
-        ${cfg.stages.map((s, i) => `<tr><td>${stageBadge(s.name)}</td><td><input class="in" id="sp-${i}" type="number" min="0" max="100" style="width:80px" value="${s.prob}" ${dis || (s.name === 'Paid' || s.name === 'Lost' ? 'disabled' : '')}></td><td class="num">${actual[s.name] && actual[s.name].actualWin != null ? `${actual[s.name].actualWin}% <span class="faint small">(n=${actual[s.name].actualN})</span>` : '<span class="faint">—</span>'}</td></tr>`).join('')}
-      </tbody></table>${admin ? `<div style="padding:10px 16px" class="row"><button class="btn pri sm" onclick="saveProbs()">Save probabilities</button><span class="small muted">Switch a stage to its actual % once n ≥ ${D.minN}.</span></div>` : ''}</div></div>
+      <div class="card"><div class="hd"><h3>Exchange rates</h3><span class="note">SGD per 1 unit</span></div><div class="bd flush tablewrap"><table class="t"><thead><tr><th>Currency</th><th>Rate</th><th>Note</th><th></th></tr></thead><tbody>
+        ${D.fx.map((f, i) => `<tr><td>${f.isNew ? `<input class="in mono" style="width:80px" value="${esc(f.currency)}" placeholder="JPY" oninput="dset('fx',${i},'currency',this.value.toUpperCase())">` : `<b class="mono">${esc(f.currency)}</b>`}</td>
+          <td><input class="in" type="number" step="any" style="width:110px" value="${esc(f.rate)}" ${dis || (f.currency === 'SGD' ? 'disabled' : '')} oninput="dset('fx',${i},'rate',this.value)"></td>
+          <td><input class="in" value="${esc(f.note)}" ${dis} oninput="dset('fx',${i},'note',this.value)"></td>
+          <td class="right">${admin && f.currency !== 'SGD' ? iconBtn('✕', `rowDel('fx',${i})`, 'Remove currency', 'danger') : ''}</td></tr>`).join('')}
+      </tbody></table>${admin ? secBtns('fx', 'rate') : ''}<div class="small muted" style="padding:0 16px 12px">Rates only affect open (unpaid) amounts. A currency used by a deal cannot be removed.</div></div></div>
+
+      <div class="card"><div class="hd"><h3>Stages & probabilities</h3><span class="note">Assumed % until real data</span></div><div class="bd flush tablewrap"><table class="t"><thead><tr><th></th><th>Stage name</th><th>Type</th><th>%</th><th class="num" title="Actual win % of decided deals that reached this stage">Actual</th></tr></thead><tbody>
+        ${D.stages.map((s, i) => `<tr><td class="nowrap" style="padding-right:0">${admin ? iconBtn('↑', `rowMove('stages',${i},-1)`, 'Move up') + iconBtn('↓', `rowMove('stages',${i},1)`, 'Move down') + iconBtn('✕', `rowDel('stages',${i})`, 'Remove stage', 'danger') : ''}</td>
+          <td><input class="in" style="min-width:105px" value="${esc(s.name)}" ${dis} oninput="dset('stages',${i},'name',this.value)"></td>
+          <td><select class="in" style="width:104px" ${dis} onchange="dset('stages',${i},'kind',this.value);rerender()">${opts([{ v: 'open', l: 'Open' }, { v: 'paid', l: 'Won' }, { v: 'lost', l: 'Lost' }], s.kind)}</select></td>
+          <td>${s.kind === 'open' ? `<input class="in" type="number" min="0" max="100" style="width:62px" value="${esc(s.prob)}" ${dis} oninput="dset('stages',${i},'prob',this.value)">` : `<span class="muted">${s.kind === 'paid' ? '100' : '0'}</span>`}</td>
+          <td class="num">${s.orig && actual[s.orig] && actual[s.orig].actualWin != null ? `${actual[s.orig].actualWin}% <span class="faint small">(n=${actual[s.orig].actualN})</span>` : '<span class="faint">—</span>'}</td>
+          </tr>`).join('')}
+      </tbody></table>
+      ${D.stagesRemoved.filter(r => dealsIn(r.name)).map((r, k) => `<div class="alert" style="margin:10px 16px 0">Removing <b>${esc(r.name)}</b>: move its ${dealsIn(r.name)} deal(s) to <select class="in" style="width:auto;display:inline-block" onchange="S.draft.stagesRemoved[${D.stagesRemoved.indexOf(r)}].moveTo=this.value">${opts(openNames, r.moveTo)}</select></div>`).join('')}
+      ${admin ? secBtns('stages', 'stage') : ''}<div class="small muted" style="padding:0 16px 12px">Exactly one "Won" stage (set automatically when fully paid) and one "Lost" stage. Renaming a stage updates every deal on it.</div></div></div>
     </div>
+
     <div class="cols even">
+      <div class="card"><div class="hd"><h3>Dropdown lists</h3>${admin ? `<span class="note">Rename, reorder, add or remove values</span>` : ''}</div><div class="bd" style="padding-bottom:0">
+        <select class="in" onchange="S.draft.listName=this.value;initDraft('list');rerender()">${opts((cfg.editableLists || Object.keys(cfg.lists)).map(k => ({ v: k, l: ({ LeadSource: 'Lead source', Channel: 'Channel', Segment: 'Customer segment', Application: 'Application', PriceType: 'Price type', DeliveryStatus: 'Delivery status', LostReason: 'Lost reason', ActivityType: 'Communication type' })[k] || k })), D.listName)}</select></div>
+        <div class="bd flush tablewrap" style="margin-top:8px"><table class="t"><tbody>
+        ${D.list.map((x, i) => { const lk = locked.includes(x.orig); return `<tr><td class="nowrap" style="width:70px">${admin ? iconBtn('↑', `rowMove('list',${i},-1)`, 'Move up') + iconBtn('↓', `rowMove('list',${i},1)`, 'Move down') : ''}</td>
+          <td><input class="in" value="${esc(x.value)}" ${dis || (lk ? 'disabled' : '')} oninput="dset('list',${i},'value',this.value)">${lk ? '<div class="small faint">Used by the program logic — fixed</div>' : ''}</td>
+          <td class="right" style="width:50px">${admin && !lk ? iconBtn('✕', `rowDel('list',${i})`, 'Remove value', 'danger') : ''}</td></tr>`; }).join('')}
+        </tbody></table>${admin ? secBtns('list', 'value') : ''}<div class="small muted" style="padding:0 16px 12px">Renaming a value also updates every record that uses it. Removing a value keeps it on old records but hides it from new ones.</div></div></div>
+
       <div class="card"><div class="hd"><h3>Rules, AI & Reminders</h3></div><div class="bd"><div class="grid g2">
         <div><label class="f">Dormant after (days without contact)</label><input id="st-dorm" class="in" type="number" value="${esc(cfg.settings.DormantDays)}" ${dis}></div>
         <div><label class="f">Small-sample warning (decided deals)</label><input id="st-n" class="in" type="number" value="${esc(cfg.settings.SmallSampleN)}" ${dis}></div>
@@ -1020,30 +1083,53 @@ function viewSettings() {
         <div><label class="f">Tier B from (SGD)</label><input id="st-b" class="in" type="number" value="${esc(cfg.settings.TierB_SGD)}" ${dis}></div>
         <div class="span2"><label class="f">CRM link used in reminder emails <span class="faint">(leave empty = Apps Script link)</span></label><input id="st-url" class="in" value="${esc(cfg.settings.PublicUrl || '')}" placeholder="e.g. https://yourname.github.io/spectronik-crm/" ${dis}></div>
       </div>${admin ? '<button class="btn pri sm" style="margin-top:12px" onclick="saveRules()">Save rules</button>' : ''}${aiAndReminderBoxHTML()}</div></div>
-      <div class="card"><div class="hd"><h3>Dropdown lists</h3></div><div class="bd">
-        <select id="ls-name" class="in" onchange="document.getElementById('ls-vals').innerHTML=(S.boot.config.lists[this.value]||[]).map(x=>'<span class=\\'b\\' style=\\'margin:0 4px 4px 0\\'>'+esc(x)+'</span>').join('')">${opts(listNames, 'LeadSource')}</select>
-        <div id="ls-vals" style="margin:10px 0">${(cfg.lists.LeadSource || []).map(x => `<span class="b" style="margin:0 4px 4px 0">${esc(x)}</span>`).join('')}</div>
-        ${admin ? `<div class="row"><input id="ls-new" class="in" style="max-width:240px" placeholder="New value"><button class="btn sm" onclick="addListVal()">Add to list</button></div><div class="small muted" style="margin-top:6px">Don't rename values that are already in use — old records would stop matching. Add new ones instead.</div>` : ''}
-      </div></div>
     </div>
-    ${admin ? `<div class="card" style="margin-bottom:14px"><div class="hd"><h3>Users, Roles, PINs & Reminder Emails</h3><span class="note">One PIN per person — email is used for follow-up reminders</span></div><div class="bd flush tablewrap"><table class="t"><thead><tr><th>Name</th><th>Email (for reminders)</th><th>Role</th><th>CRM access</th><th>Active</th><th>New PIN</th><th></th></tr></thead><tbody>
-      ${S.boot.users.map((u, i) => `<tr><td><b>${esc(u.Name)}</b> <span class="mono faint">${u.UserID}</span></td><td><input id="u-e${i}" class="in" type="email" style="min-width:190px" value="${esc(u.Email || '')}" placeholder="user@spectronik.com"></td><td><select id="u-r${i}" class="in" style="width:110px">${opts(['Admin', 'Editor', 'Viewer'], u.Role)}</select></td><td>${u.Role === 'Admin' ? '<span class="small muted">All (Admin)</span>' : S.boot.crmsAll.map(c => `<label class="small" style="display:flex;align-items:center;gap:5px;white-space:nowrap;margin:3px 0"><input type="checkbox" class="u-acc${i}" value="${esc(c.id)}" ${(u.Access === 'ALL' || String(u.Access).split(',').includes(c.id)) ? 'checked' : ''}> ${esc(c.name)}</label>`).join('')}</td><td><select id="u-a${i}" class="in" style="width:80px">${opts(['Yes', 'No'], u.Active || 'Yes')}</select></td><td><input id="u-p${i}" class="in pin" style="width:130px;font-size:14px;letter-spacing:4px" maxlength="6" inputmode="numeric" placeholder="keep"></td><td><button class="btn sm" onclick="saveUser(${i},'${u.UserID}','${esc(u.Name)}')">Save</button></td></tr>`).join('')}
-      <tr><td><input id="u-nn" class="in" placeholder="Name"></td><td><input id="u-ne" class="in" type="email" style="min-width:190px" placeholder="user@spectronik.com"></td><td><select id="u-nr" class="in" style="width:110px">${opts(['Editor', 'Viewer', 'Admin'], 'Editor')}</select></td><td>${S.boot.crmsAll.map(c => `<label class="small" style="display:flex;align-items:center;gap:5px;white-space:nowrap;margin:3px 0"><input type="checkbox" class="u-accn" value="${esc(c.id)}" ${c.id === S.boot.crm.id ? 'checked' : ''}> ${esc(c.name)}</label>`).join('')}</td><td></td><td><input id="u-np" class="in pin" style="width:130px;font-size:14px;letter-spacing:4px" maxlength="6" inputmode="numeric" placeholder="6 digits"></td><td><button class="btn sm pri" onclick="saveUser(-1)">Add user</button></td></tr>
-    </tbody></table><div class="small muted" style="padding:10px 16px">Viewer = read-only (e.g. investors). Editor = can add and edit records. Admin = also settings and users, and always sees every CRM. CRM access: which company CRMs a non-Admin user can open (same name and PIN for all).</div></div></div>` : ''}
-    <div class="card"><div class="hd"><h3>Products</h3><span class="note">Used for line items and product statistics</span></div><div class="bd flush tablewrap"><table class="t"><thead><tr><th>Code</th><th>Name</th><th>Category</th><th class="num">List price (USD)</th><th>Active</th>${admin ? '<th></th>' : ''}</tr></thead><tbody>
-      ${cfg.products.map((p, i) => `<tr><td class="mono">${esc(p.code)}</td><td>${admin ? `<input class="in" id="pr-n${i}" value="${esc(p.name)}">` : esc(p.name)}</td><td>${admin ? `<input class="in" id="pr-c${i}" value="${esc(p.category)}" style="width:150px">` : esc(p.category)}</td><td class="num">${admin ? `<input class="in" id="pr-l${i}" type="number" step="any" value="${esc(p.listPriceUSD)}" style="width:110px">` : money(p.listPriceUSD, '', 0)}</td><td>${admin ? `<input type="checkbox" id="pr-a${i}" ${p.active ? 'checked' : ''}>` : (p.active ? 'Yes' : 'No')}</td>${admin ? `<td><button class="btn sm" onclick="saveProd(${i},'${esc(p.code)}')">Save</button></td>` : ''}</tr>`).join('')}
-      ${admin ? `<tr><td><input class="in" id="pr-newc" placeholder="CODE" style="width:110px"></td><td><input class="in" id="pr-newn" placeholder="Name"></td><td><input class="in" id="pr-newcat" placeholder="Category" style="width:150px"></td><td class="num"><input class="in" id="pr-newl" type="number" step="any" style="width:110px"></td><td></td><td><button class="btn sm pri" onclick="saveProd(-1)">Add</button></td></tr>` : ''}
-    </tbody></table></div></div>
+
+    ${admin ? `<div class="card" style="margin-bottom:14px"><div class="hd"><h3>Users, roles, PINs & CRM access</h3><span class="note">Shared by all CRMs — one name and PIN per person</span></div><div class="bd flush tablewrap"><table class="t"><thead><tr><th>Name</th><th>Email (reminders)</th><th>Role</th><th>CRM access</th><th>Active</th><th>New PIN</th></tr></thead><tbody>
+      ${D.users.map((u, i) => `<tr><td><input class="in" style="min-width:130px" value="${esc(u.Name)}" placeholder="Name" oninput="dset('users',${i},'Name',this.value)">${u.UserID ? `<div class="mono faint small">${u.UserID}</div>` : '<div class="small" style="color:var(--accent)">new</div>'}</td>
+        <td><input class="in" type="email" style="min-width:180px" value="${esc(u.Email)}" placeholder="user@company.com" oninput="dset('users',${i},'Email',this.value)"></td>
+        <td><select class="in" style="width:105px" onchange="dset('users',${i},'Role',this.value);rerender()">${opts(['Admin', 'Editor', 'Viewer'], u.Role)}</select></td>
+        <td>${u.Role === 'Admin' ? '<span class="small muted">All (Admin)</span>' : S.boot.crmsAll.map(c => `<label class="small" style="display:flex;align-items:center;gap:5px;white-space:nowrap;margin:3px 0"><input type="checkbox" ${u.Access.includes(c.id) ? 'checked' : ''} onchange="const a=S.draft.users[${i}].Access;if(this.checked){if(!a.includes('${c.id}'))a.push('${c.id}')}else{a.splice(a.indexOf('${c.id}'),1)}"> ${esc(c.name)}</label>`).join('')}</td>
+        <td><select class="in" style="width:75px" onchange="dset('users',${i},'Active',this.value)">${opts(['Yes', 'No'], u.Active)}</select></td>
+        <td><input class="in pin" style="width:120px;font-size:14px;letter-spacing:4px" maxlength="6" inputmode="numeric" placeholder="${u.isNew ? '6 digits' : 'keep'}" value="${esc(u.Pin)}" oninput="dset('users',${i},'Pin',this.value)"></td></tr>`).join('')}
+    </tbody></table>${secBtns('users', 'user')}<div class="small muted" style="padding:0 16px 12px">Viewer = read-only (e.g. investors). Editor = add and edit records. Admin = also settings, users and deleting; always sees every CRM. To remove someone, set Active = No (their past entries keep their name).</div></div></div>` : ''}
+
+    <div class="card"><div class="hd"><h3>Products</h3><span class="note">Used for line items and product statistics</span></div><div class="bd flush tablewrap"><table class="t"><thead><tr><th>Code</th><th>Name</th><th>Category</th><th class="num">List price (USD)</th><th>Active</th><th></th></tr></thead><tbody>
+      ${D.products.map((p, i) => `<tr><td>${p.isNew ? `<input class="in mono" style="width:110px" value="${esc(p.code)}" placeholder="CODE" oninput="dset('products',${i},'code',this.value.toUpperCase())">` : `<span class="mono">${esc(p.code)}</span>`}</td>
+        <td><input class="in" value="${esc(p.name)}" ${dis} oninput="dset('products',${i},'name',this.value)"></td>
+        <td><input class="in" style="width:150px" value="${esc(p.category)}" ${dis} oninput="dset('products',${i},'category',this.value)"></td>
+        <td class="num"><input class="in" type="number" step="any" style="width:110px" value="${esc(p.listPriceUSD)}" ${dis} oninput="dset('products',${i},'listPriceUSD',this.value)"></td>
+        <td><input type="checkbox" ${p.active ? 'checked' : ''} ${dis} onchange="dset('products',${i},'active',this.checked)"></td>
+        <td class="right">${admin ? iconBtn('✕', `rowDel('products',${i})`, 'Delete product', 'danger') : ''}</td></tr>`).join('')}
+    </tbody></table>${admin ? secBtns('products', 'product') : ''}<div class="small muted" style="padding:0 16px 12px">Deleting a product keeps its code on old deals. To hide it from new deals but keep it in the list, untick Active instead.</div></div></div>
     ${admin && !S.boot.customers.length ? `<div class="card" style="margin-top:14px"><div class="bd row" style="justify-content:space-between"><div><b>Empty CRM.</b> <span class="muted">Load 8 sample customers from Jo's sheet to test the logic.</span></div><button class="btn" onclick="call('loadSample',{}).then(r=>{toast(r);rerender()}).catch(fail)">Load sample data</button></div></div>` : ''}
   `);
 }
-async function saveFx(ccy, i) {
-  const data = ccy ? { currency: ccy, rate: v('fx-r' + i), note: v('fx-n' + i) } : { currency: v('fx-newc'), rate: v('fx-newr'), note: v('fx-newn') };
-  try { await call('saveFX', data); toast('Rate saved'); rerender(); } catch (e) { fail(e); }
-}
-async function saveProbs() {
-  const stages = S.boot.config.stages.map((s, i) => ({ name: s.name, prob: v('sp-' + i) }));
-  try { await call('saveStageProb', { stages }); toast('Probabilities saved'); rerender(); } catch (e) { fail(e); }
+
+async function saveSection(sec) {
+  const D = S.draft;
+  try {
+    if (sec === 'fx') {
+      if (D.fx.some(f => !/^[A-Z]{3}$/.test(f.currency))) throw new Error('Each currency needs a 3-letter code, e.g. JPY.');
+      await call('saveFXAll', { rows: D.fx.map(f => ({ currency: f.currency, rate: f.rate, note: f.note })), removed: D.fxRemoved });
+    } else if (sec === 'stages') {
+      await call('saveStages', { stages: D.stages, removed: D.stagesRemoved });
+    } else if (sec === 'list') {
+      await call('saveListValues', { list: D.listName, values: D.list });
+    } else if (sec === 'products') {
+      if (D.products.some(p => !p.code || !p.name)) throw new Error('Each product needs a code and a name.');
+      await call('saveProductsAll', { rows: D.products.map(p => ({ code: p.code, name: p.name, category: p.category, listPriceUSD: p.listPriceUSD, active: p.active })), removed: D.prodRemoved });
+    } else if (sec === 'users') {
+      const rows = D.users.filter(u => u.Name.trim());
+      for (const u of rows) {
+        if (u.isNew && !/^\d{6}$/.test(u.Pin)) throw new Error(`New user "${u.Name}" needs a 6-digit PIN.`);
+        if (u.Pin && !/^\d{6}$/.test(u.Pin)) throw new Error(`PIN for "${u.Name}" must be exactly 6 digits.`);
+        if (u.Role !== 'Admin' && !u.Access.length) throw new Error(`Tick at least one CRM for "${u.Name}".`);
+      }
+      await call('saveUsersAll', { rows: rows.map(u => ({ UserID: u.UserID, Name: u.Name.trim(), Email: u.Email, Role: u.Role, Active: u.Active, Pin: u.Pin, Access: u.Role === 'Admin' ? ['ALL'] : u.Access })) });
+    }
+    initDraft(sec); toast('Saved'); rerender();
+  } catch (e) { fail(e); }
 }
 async function saveRules() {
   try { await call('saveSettings', { DormantDays: num(v('st-dorm')), SmallSampleN: num(v('st-n')), TierA_SGD: num(v('st-a')), TierB_SGD: num(v('st-b')), PublicUrl: v('st-url').trim() }); toast('Rules saved'); rerender(); } catch (e) { fail(e); }
@@ -1057,16 +1143,30 @@ async function toggleReminders(enable) {
 async function runRemindersNow() {
   try { const r = await call('runRemindersNow', {}); toast(r.message || ('Sent ' + r.sent + ' reminder email(s)')); } catch (e) { fail(e); }
 }
-async function addListVal() { try { await call('addListValue', { list: v('ls-name'), value: v('ls-new') }); toast('Added'); rerender(); } catch (e) { fail(e); } }
-async function saveUser(i, uid, name) {
-  const acc = sel => [...document.querySelectorAll(sel)].filter(x => x.checked).map(x => x.value);
-  const data = i < 0 ? { Name: v('u-nn'), Email: v('u-ne'), Role: v('u-nr'), Pin: v('u-np'), Active: 'Yes', Access: acc('.u-accn') } : { UserID: uid, Name: name, Email: v('u-e' + i), Role: v('u-r' + i), Active: v('u-a' + i), Pin: v('u-p' + i), Access: v('u-r' + i) === 'Admin' ? ['ALL'] : acc('.u-acc' + i) };
-  if (data.Role !== 'Admin' && !data.Access.length) { fail(new Error('Tick at least one CRM for this user.')); return; }
-  try { await call('saveUser', data); toast('User saved'); rerender(); } catch (e) { fail(e); }
+
+/* ======================= Archive & delete ======================= */
+async function archiveItem(kind, id, archived) {
+  const what = kind === 'customer' ? 'this customer and all their deals' : 'this deal';
+  if (archived && !confirm(`Archive ${what}? It will be hidden from lists, dashboard and reminders. You can restore it any time.`)) return;
+  try { await call('setArchived', { kind, id, archived }); toast(archived ? 'Archived' : 'Restored'); rerender(); } catch (e) { fail(e); }
 }
-async function saveProd(i, code) {
-  const data = i < 0 ? { code: v('pr-newc'), name: v('pr-newn'), category: v('pr-newcat'), listPriceUSD: v('pr-newl'), active: true } : { code, name: v('pr-n' + i), category: v('pr-c' + i), listPriceUSD: v('pr-l' + i), active: v('pr-a' + i) };
-  try { await call('saveProduct', data); toast('Product saved'); rerender(); } catch (e) { fail(e); }
+async function deleteDealUI(id) {
+  const d = deal(id);
+  if (!confirm(`Permanently delete deal ${id} "${d.Title}"?\n\nIts items, payments, history and communication log are deleted too. This cannot be undone.`)) return;
+  try { await call('deleteDeal', { id }); toast('Deal deleted'); go('#/deals'); } catch (e) { fail(e); }
+}
+async function deleteContactUI(id) {
+  const p = contact(id);
+  if (!confirm(`Delete contact "${p.Name}"? Deals and history that mention this person are kept.`)) return;
+  try { await call('deleteContact', { id }); toast('Contact deleted'); rerender(); } catch (e) { fail(e); }
+}
+function deleteCustomerUI(id) {
+  const c = cust(id), n = S.boot.deals.filter(d => d.CustomerID === id).length;
+  modal('Delete customer permanently', `<div class="alert" style="margin-top:0;background:var(--red-bg);border-color:#F4C7C2;color:var(--red)">This deletes <b>${esc(c.Name)}</b>, its ${n} deal(s), contacts, payments and the whole communication history. <b>It cannot be undone.</b><br>If you only want to hide it, use <b>Archive</b> instead.</div>
+    <label class="f">Type DELETE to confirm</label><input id="del-ok" class="in" autocomplete="off">`, async () => {
+    if (v('del-ok').trim() !== 'DELETE') throw new Error('Type DELETE (capital letters) to confirm.');
+    await call('deleteCustomer', { id }); closeModal(); toast('Customer deleted'); go('#/customers');
+  }, 'Delete permanently');
 }
 
 window.onload = start;
