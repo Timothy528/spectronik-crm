@@ -206,7 +206,7 @@ window.CRM_API_URL = 'https://script.google.com/macros/s/AKfycbxajDpngogll-tK0Ws
 <div id="loading" class="loading hidden"></div>
 <script>
 /* ======================= Runtime bridge ======================= */
-const S = { token: null, crm: null, boot: null, dispCcy: 'SGD', cache: {}, filters: { deals: { stage: 'open', brand: '', q: '' }, customers: { q: '', seg: '', tier: '', key: false, arch: false } }, draft: null };
+const S = { token: null, crm: null, boot: null, dispCcy: 'SGD', cache: {}, filters: { deals: { stage: 'open', brand: '', q: '' }, customers: { q: '', seg: '', tier: '', key: false, arch: false }, dash: { from: '', to: '' } }, draft: null };
 function store(k, v) { try { if (v === undefined) return sessionStorage.getItem(k); if (v === null) sessionStorage.removeItem(k); else sessionStorage.setItem(k, v); } catch (e) { return null; } }
 let busy = 0;
 function setBusy(d) { busy += d; document.getElementById('loading').classList.toggle('hidden', busy <= 0); }
@@ -237,11 +237,17 @@ function setBusy(d) { busy += d; document.getElementById('loading').classList.to
   } };
   if (location.hash.length > 1) S.route = location.hash.replace(/^#\/?/, '');
 })();
+function showPerf(ms, serverMs, fast) {
+  S.perf = { ms, serverMs, fast };
+  const el = document.getElementById('perf');
+  if (el) el.textContent = `Last save/load: ${(ms / 1000).toFixed(1)} s` + (serverMs != null ? ` (server ${(serverMs / 1000).toFixed(1)} s${fast ? ', fast read' : ''})` : '');
+}
 function gs(fn, ...args) {
+  const t0 = performance.now();
   return new Promise((res, rej) => {
     setBusy(1);
     google.script.run
-      .withSuccessHandler(r => { setBusy(-1); try { res(JSON.parse(r)); } catch (e) { rej(e); } })
+      .withSuccessHandler(r => { setBusy(-1); try { const o = JSON.parse(r); if (fn === 'api' || fn === 'login') showPerf(performance.now() - t0, o.ms, o.fast); res(o); } catch (e) { rej(e); } })
       .withFailureHandler(e => { setBusy(-1); rej(e); })[fn](...args);
   });
 }
@@ -416,7 +422,7 @@ function shell(active, inner) {
       <a class="${active === 'deal' ? 'on' : ''}" onclick="go('#/deals')">${ICON.deal}<span>Deals</span></a>
       <a class="${active === 'set' ? 'on' : ''}" onclick="go('#/settings')">${ICON.set}<span>Settings</span></a>
     </nav>
-    <div class="me"><b>${esc(me.name)}</b><span class="ver">${esc(me.role)} · v${esc(S.boot.version)}<br></span><a onclick="logout()">Sign out</a></div>
+    <div class="me"><b>${esc(me.name)}</b><span class="ver">${esc(me.role)} · v${esc(S.boot.version)}<br></span><a onclick="logout()">Sign out</a><div id="perf" class="ver" style="margin-top:6px;color:#7F95A6;font-size:11px">${S.perf ? `Last save/load: ${(S.perf.ms / 1000).toFixed(1)} s` + (S.perf.serverMs != null ? ` (server ${(S.perf.serverMs / 1000).toFixed(1)} s${S.perf.fast ? ', fast read' : ''})` : '') : ''}</div></div>
   </aside><div class="main">
     <div class="top"><div class="search">${ICON.search}<input id="gsearch" placeholder="Search customers, deals, IDs…" autocomplete="off"><div id="gres" class="results hidden"></div></div>
       <div style="margin-left:auto" class="row">${can('Editor') ? `<button class="btn" onclick="customerForm()">+ Customer</button><button class="btn pri" onclick="dealForm()">+ Deal</button>` : '<span class="b out">Read-only</span>'}</div></div>
@@ -454,9 +460,86 @@ function route() {
 function rerender() { const y = window.scrollY; route(); window.scrollTo(0, y); }
 
 /* ======================= Dashboard ======================= */
+/* ======================= Dashboard (v0.5: computed in the browser → year filter is instant) ======================= */
+function dealYear(d) { return String(d.FirstContact || d.CreatedAt || '').slice(0, 4); }
+function dashYears() { return [...new Set(S.boot.deals.map(dealYear).filter(y => /^\d{4}$/.test(y)))].sort(); }
+function computeDashboard(filter) {
+  const cfg = S.boot.config, f = filter || S.filters.dash || {};
+  const inRange = d => { const y = dealYear(d); return (!f.from || y >= f.from) && (!f.to || y <= f.to); };
+  const all = S.boot.deals.filter(d => !d.archived);
+  const deals = all.filter(inRange);
+  const custById = {}; S.boot.customers.forEach(c => custById[c.CustomerID] = c);
+  const regionOf = d => (custById[d.CustomerID] || {}).Region || 'Unassigned';
+  const ids = new Set(deals.map(d => d.DealID));
+  const minN = num(cfg.settings.SmallSampleN) || 20;
+  const r2 = n => Math.round(n * 100) / 100, sum = (a, k) => a.reduce((s, x) => s + num(x[k]), 0);
+  let revenue = 0;
+  S.boot.payments.forEach(p => { if (!ids.has(p.DealID)) return; const d = deal(p.DealID); revenue += p.SGDReceived !== '' ? num(p.SGDReceived) : num(p.AmountDealCcy) * (d ? d.rate : 0); });
+  const money = { paidDelivered: 0, paidNotDelivered: 0, unpaidDelivered: 0, unpaidNotDelivered: 0, counts: { paidDelivered: 0, paidNotDelivered: 0, unpaidDelivered: 0, unpaidNotDelivered: 0 } };
+  deals.forEach(d => {
+    if (!(d.won || d.paidCcy > 0) || d.lost) return;
+    const del = d.DeliveryStatus === 'Delivered';
+    if (d.paidSGD > 0) { const k = del ? 'paidDelivered' : 'paidNotDelivered'; money[k] += d.paidSGD; money.counts[k]++; }
+    if (d.outstanding > 0 && d.won) { const k = del ? 'unpaidDelivered' : 'unpaidNotDelivered'; money[k] += d.outstandingSGD; money.counts[k]++; }
+  });
+  const pipeline = cfg.stages.filter(s => s.kind === 'open').map(s => {
+    const inStage = deals.filter(d => d.effectiveStage === s.name);
+    const reached = deals.filter(d => d.decided && d.stagesVisited.includes(s.name));
+    const won = reached.filter(d => d.won).length;
+    return { stage: s.name, prob: s.prob, count: inStage.length, openSGD: r2(sum(inStage, 'openSGD')), weightedSGD: r2(sum(inStage, 'weightedSGD')),
+      missingValue: inStage.filter(d => d.valueMissing).length, actualN: reached.length, actualWin: reached.length ? Math.round(won / reached.length * 100) : null };
+  });
+  const dorm = deals.filter(d => d.dormant);
+  pipeline.push({ stage: 'Dormant', prob: 0, count: dorm.length, openSGD: r2(sum(dorm, 'openSGD')), weightedSGD: 0, missingValue: 0, actualN: null, actualWin: null });
+  const winBy = (keyFn, src) => {
+    const map = {};
+    src.forEach(d => { const k = keyFn(d) || '(blank)'; const r = map[k] = map[k] || { key: k, deals: 0, won: 0, lost: 0, dormant: 0, open: 0, wonSGD: 0 };
+      r.deals++; if (d.won) { r.won++; r.wonSGD += d.valueSGD; } else if (d.lost) r.lost++; else if (d.dormant) r.dormant++; else r.open++; });
+    return Object.values(map).map(r => { const dec = r.won + r.lost + r.dormant; return Object.assign(r, { decided: dec, winRate: dec ? Math.round(r.won / dec * 100) : null, small: dec < minN, wonSGD: r2(r.wonSGD) }); })
+      .sort((a, b) => b.deals - a.deals);
+  };
+  // Sales (SGD actually received) by region, product and product category
+  const share = map => { const tot = Object.values(map).reduce((s, v) => s + v, 0); return Object.entries(map).map(([key, v]) => ({ key, sgd: r2(v), pct: tot ? Math.round(v / tot * 1000) / 10 : 0 })).sort((a, b) => b.sgd - a.sgd); };
+  const byRegionSales = {}, byProdSales = {}, byCatSales = {}; let unallocated = 0;
+  deals.forEach(d => {
+    if (!(d.paidSGD > 0)) return;
+    byRegionSales[regionOf(d)] = (byRegionSales[regionOf(d)] || 0) + d.paidSGD;
+    const its = S.boot.items.filter(i => i.DealID === d.DealID && i.UnitPrice !== '' && num(i.UnitPrice) > 0);
+    const tot = its.reduce((s, i) => s + num(i.Qty) * num(i.UnitPrice), 0);
+    if (!tot) { unallocated += d.paidSGD; return; }
+    its.forEach(i => { const part = d.paidSGD * num(i.Qty) * num(i.UnitPrice) / tot, p = product(i.ProductCode), cat = (p && p.category) || 'Other';
+      byProdSales[i.ProductCode] = (byProdSales[i.ProductCode] || 0) + part; byCatSales[cat] = (byCatSales[cat] || 0) + part; });
+  });
+  const prod = {};
+  deals.forEach(d => d.items.forEach(i => {
+    const p = prod[i.code] = prod[i.code] || { code: i.code, enquiredQty: 0, wonQty: 0, lostQty: 0, openQty: 0, deals: 0 };
+    p.deals++; p.enquiredQty += i.qty; if (d.won) p.wonQty += i.qty; else if (d.lost || d.dormant) p.lostQty += i.qty; else p.openQty += i.qty;
+  }));
+  const lostReasons = {};
+  deals.forEach(d => { if (d.lost) { const k = d.LostReason || '(not given)'; lostReasons[k] = (lostReasons[k] || 0) + 1; } });
+  // Follow-ups are about today's work, so they ignore the year filter
+  const follow = all.filter(d => !d.lost && d.Stage !== R().paid && !d.dormant && d.NextActionDate)
+    .sort((a, b) => String(a.NextActionDate) < String(b.NextActionDate) ? -1 : 1).slice(0, 12)
+    .map(d => ({ DealID: d.DealID, customer: custName(d.CustomerID), title: d.Title, next: d.NextAction, date: d.NextActionDate, by: d.NextActionBy || d.UpdatedBy || '', overdue: d.overdue }));
+  const open = deals.filter(d => !d.lost && d.Stage !== R().paid && !d.dormant);
+  return {
+    revenue: r2(revenue), money, pipeline, minN,
+    pipelineTotalSGD: r2(sum(open, 'openSGD')), pipelineWeightedSGD: r2(sum(open, 'weightedSGD')),
+    openCount: open.length, overdueCount: all.filter(d => !d.lost && d.Stage !== R().paid && !d.dormant && d.overdue).length,
+    missingValueCount: open.filter(d => d.valueMissing).length,
+    bySource: winBy(d => d.LeadSource, deals), bySegment: winBy(d => (custById[d.CustomerID] || {}).Segment, deals),
+    byApplication: winBy(d => d.Application, deals), byRegion: winBy(regionOf, deals),
+    salesByRegion: share(byRegionSales), salesByProduct: share(byProdSales), salesByCategory: share(byCatSales), unallocated: r2(unallocated),
+    products: Object.values(prod).sort((a, b) => b.enquiredQty - a.enquiredQty), lostReasons, followUps: follow, dealCount: deals.length
+  };
+}
+function rangeLabel() { const f = S.filters.dash || {}; if (!f.from && !f.to) return 'All years'; if (f.from && f.from === f.to) return f.from; return (f.from || 'start') + '–' + (f.to || 'now'); }
+function setYears(from, to) { S.filters.dash = { from: from || '', to: to || '' }; rerender(); }
+
 function viewDashboard() {
-  const D = S.boot.dashboard, cfg = S.boot.config;
-  const usdOk = !!cfg.fx.USD;
+  const D = computeDashboard(), cfg = S.boot.config, f = S.filters.dash || {};
+  const usdOk = !!cfg.fx.USD, years = dashYears(), thisYear = S.boot.today.slice(0, 4);
+  const lastOpen = D.pipeline.filter(p => p.stage !== 'Dormant').slice(-1)[0] || { stage: '—', openSGD: 0, count: 0 };
   const maxW = Math.max(1, ...D.pipeline.map(p => p.weightedSGD));
   const pipeRows = D.pipeline.map(p => `<tr>
     <td>${stageBadge(p.stage)}</td><td class="num">${p.count}${p.missingValue ? ` <span class="b st-Awaiting" title="Deals without a value">${p.missingValue} no value</span>` : ''}</td>
@@ -468,19 +551,29 @@ function viewDashboard() {
   const winTable = (rows, label) => rows.length ? `<table class="t"><thead><tr><th>${label}</th><th class="num" title="Won / lost or dormant / still open">Won · lost · open</th><th>Win rate</th><th class="num">Won value</th></tr></thead><tbody>${rows.map(r => `<tr>
     <td>${esc(r.key)}</td><td class="num">${r.won} · ${r.lost + r.dormant} · ${r.open}</td>
     <td style="min-width:110px">${r.winRate == null ? '<span class="faint small">none decided yet</span>' : `<div class="row" style="flex-wrap:nowrap"><div class="bar green" style="flex:1"><i style="width:${r.winRate}%"></i></div><b class="small">${r.winRate}%</b></div>${r.small ? `<div class="faint small">n=${r.decided}, too few</div>` : ''}`}</td>
-    <td class="num">${disp(r.wonSGD)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No deals yet.</div>';
+    <td class="num">${disp(r.wonSGD)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No deals in this period.</div>';
+  const shareTable = (rows, label, nameFn) => rows.length ? `<table class="t"><thead><tr><th>${label}</th><th>Share of sales</th><th class="num">Received</th></tr></thead><tbody>${rows.map(r => `<tr><td>${nameFn ? nameFn(r.key) : esc(r.key)}</td>
+    <td style="min-width:140px"><div class="row" style="flex-wrap:nowrap"><div class="bar" style="flex:1"><i style="width:${r.pct}%"></i></div><b class="small">${r.pct}%</b></div></td><td class="num">${disp(r.sgd)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No payments received in this period.</div>';
   const prodRows = D.products.map(p => { const pr = product(p.code); const conv = (p.wonQty + p.lostQty) ? Math.round(p.wonQty / (p.wonQty + p.lostQty) * 100) + '%' : '—'; return `<tr><td><span class="mono">${esc(p.code)}</span> <span class="muted small">${esc(pr ? pr.name : '')}</span></td><td class="num">${p.deals}</td><td class="num">${p.enquiredQty}</td><td class="num"><b>${p.wonQty}</b></td><td class="num">${p.openQty}</td><td class="num">${p.lostQty}</td><td class="num">${conv}</td></tr>`; }).join('');
-  const follow = D.followUps.map(f => `<tr class="click" onclick="go('#/deal/${f.DealID}')"><td class="nowrap ${f.overdue ? '' : 'muted'}" style="${f.overdue ? 'color:var(--red);font-weight:600' : ''}">${fdt(f.date)}</td><td><b>${esc(f.customer)}</b><div class="small muted">${esc(f.next || f.title)}${f.by ? ' · ' + esc(f.by) : ''}</div></td></tr>`).join('');
-  const lost = Object.entries(D.lostReasons).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div class="row" style="justify-content:space-between;padding:4px 0"><span>${esc(k)}</span><b>${v}</b></div>`).join('') || '<div class="faint small">No lost deals recorded yet.</div>';
+  const follow = D.followUps.map(x => `<tr class="click" onclick="go('#/deal/${x.DealID}')"><td class="nowrap ${x.overdue ? '' : 'muted'}" style="${x.overdue ? 'color:var(--red);font-weight:600' : ''}">${fdt(x.date)}</td><td><b>${esc(x.customer)}</b><div class="small muted">${esc(x.next || x.title)}${x.by ? ' · ' + esc(x.by) : ''}</div></td></tr>`).join('');
+  const lost = Object.entries(D.lostReasons).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div class="row" style="justify-content:space-between;padding:4px 0"><span>${esc(k)}</span><b>${v}</b></div>`).join('') || '<div class="faint small">No lost deals in this period.</div>';
+  const yOpts = years.map(y => ({ v: y, l: y }));
+  const unassigned = S.boot.customers.filter(c => c.Archived !== 'Yes' && c.Region === 'Unassigned').length;
 
   $('#app').innerHTML = shell('dash', `
-    <div class="ph"><div><h1>Dashboard</h1><div class="sub">Revenue counts when money is received. Pipeline probabilities are <b>assumptions</b> until real win rates replace them.</div></div>
+    <div class="ph"><div><h1>Dashboard <span class="b out" style="font-size:13px;vertical-align:middle">${esc(rangeLabel())}</span></h1><div class="sub">Deals are counted in the year of their <b>first contact</b>. Revenue = money received for those deals. Probabilities are <b>assumptions</b> until real win rates replace them.</div></div>
       <div class="row"><span class="small muted">Show in</span><div class="seg"><button class="${S.dispCcy === 'SGD' ? 'on' : ''}" onclick="S.dispCcy='SGD';rerender()">SGD</button>${usdOk ? `<button class="${S.dispCcy === 'USD' ? 'on' : ''}" onclick="S.dispCcy='USD';rerender()">USD</button>` : ''}</div></div></div>
+    <div class="card" style="margin-bottom:14px"><div class="bd row" style="gap:10px">
+      <b class="small">Period</b>
+      <div class="seg"><button class="${!f.from && !f.to ? 'on' : ''}" onclick="setYears('','')">All years</button><button class="${f.from === thisYear && f.to === thisYear ? 'on' : ''}" onclick="setYears('${thisYear}','${thisYear}')">This year</button>${years.slice(-4).filter(y => y !== thisYear).reverse().map(y => `<button class="${f.from === y && f.to === y ? 'on' : ''}" onclick="setYears('${y}','${y}')">${y}</button>`).join('')}</div>
+      <span class="small muted" style="margin-left:6px">or from</span><select class="in" style="width:auto" onchange="setYears(this.value,(S.filters.dash||{}).to)">${opts(yOpts, f.from, 'start')}</select>
+      <span class="small muted">to</span><select class="in" style="width:auto" onchange="setYears((S.filters.dash||{}).from,this.value)">${opts(yOpts, f.to, 'now')}</select>
+      <span class="small muted" style="margin-left:auto">${D.dealCount} deal(s) in period</span></div></div>
     ${D.missingValueCount ? `<div class="alert"><b>${D.missingValueCount} open deal(s) have no value.</b> The weighted pipeline is understated until a value is entered. <a onclick="S.filters.deals={stage:'novalue',brand:'',q:''};go('#/deals')">Show them</a></div>` : ''}
     ${S.dispCcy !== 'SGD' ? `<div class="alert info">Shown in ${S.dispCcy} by converting SGD at today's rate (${cfg.fx[S.dispCcy]} SGD per ${S.dispCcy}). Paid revenue was received in SGD.</div>` : ''}
     <div class="kpis">
-      <div class="card kpi green"><div class="l">Revenue received ${D.year}</div><div class="v">${disp(D.revenueYTD)}</div><div class="s">All time ${disp(D.revenueAll)}</div></div>
-      <div class="card kpi"><div class="l">Awaiting PO</div><div class="v">${disp((D.pipeline.find(p => p.stage === 'Awaiting PO') || {}).openSGD || 0)}</div><div class="s">${(D.pipeline.find(p => p.stage === 'Awaiting PO') || {}).count || 0} deal(s) — open value</div></div>
+      <div class="card kpi green"><div class="l">Revenue received</div><div class="v">${disp(D.revenue)}</div><div class="s">${esc(rangeLabel())}</div></div>
+      <div class="card kpi"><div class="l">${esc(lastOpen.stage)}</div><div class="v">${disp(lastOpen.openSGD)}</div><div class="s">${lastOpen.count} deal(s) — open value</div></div>
       <div class="card kpi amber"><div class="l">Paid, not delivered</div><div class="v">${disp(m.paidNotDelivered)}</div><div class="s">${m.counts.paidNotDelivered} deal(s) — we owe goods</div></div>
       <div class="card kpi ${m.unpaidDelivered > 0 ? 'red' : ''}"><div class="l">Delivered, not paid</div><div class="v">${disp(m.unpaidDelivered)}</div><div class="s">${m.counts.unpaidDelivered} deal(s) — collect payment</div></div>
       <div class="card kpi accent"><div class="l">Weighted pipeline</div><div class="v">${disp(D.pipelineWeightedSGD)}</div><div class="s">of ${disp(D.pipelineTotalSGD)} open</div></div>
@@ -489,17 +582,24 @@ function viewDashboard() {
     <div class="cols">
       <div class="card"><div class="hd"><h3>Pipeline by stage</h3><span class="note">Weighted = open value × probability</span></div><div class="bd flush tablewrap">
         <table class="t"><thead><tr><th>Stage</th><th class="num">Deals</th><th class="num">Open value</th><th class="num">Assumed %</th><th class="num">Weighted</th><th></th><th class="num" title="Of decided deals that reached this stage, % that were won">Actual win %</th></tr></thead><tbody>${pipeRows}</tbody></table></div></div>
-      <div class="card"><div class="hd"><h3>Next follow-ups</h3><span class="note">Red = overdue</span></div><div class="bd flush">${follow ? `<table class="t"><tbody>${follow}</tbody></table>` : '<div class="empty">No follow-ups scheduled.</div>'}</div></div>
+      <div class="card"><div class="hd"><h3>Next follow-ups</h3><span class="note">All years · red = overdue</span></div><div class="bd flush">${follow ? `<table class="t"><tbody>${follow}</tbody></table>` : '<div class="empty">No follow-ups scheduled.</div>'}</div></div>
+    </div>
+    <div class="cols even">
+      <div class="card"><div class="hd"><h3>Sales by region</h3><span class="note">SGD received</span></div><div class="bd flush tablewrap">${shareTable(D.salesByRegion, 'Region')}${unassigned ? `<div class="small muted" style="padding:10px 16px">${unassigned} customer(s) have a country without a region — set it in Settings → Regions.</div>` : ''}</div></div>
+      <div class="card"><div class="hd"><h3>Win rate by region</h3><span class="note">Lost + dormant count as not won</span></div><div class="bd flush tablewrap">${winTable(D.byRegion, 'Region')}</div></div>
+    </div>
+    <div class="cols even">
+      <div class="card"><div class="hd"><h3>Sales by product category</h3><span class="note">SGD received, split by line-item prices</span></div><div class="bd flush tablewrap">${shareTable(D.salesByCategory, 'Category')}${D.unallocated ? `<div class="small muted" style="padding:10px 16px"><b>${disp(D.unallocated)}</b> received on deals without unit prices can't be split by product (not included above). Enter unit prices on line items to include them.</div>` : ''}</div></div>
+      <div class="card"><div class="hd"><h3>Sales by product</h3><span class="note">SGD received, split by line-item prices</span></div><div class="bd flush tablewrap">${shareTable(D.salesByProduct, 'Product', k => { const p = product(k); return `<span class="mono">${esc(k)}</span> <span class="muted small">${esc(p ? p.name : '')}</span>`; })}</div></div>
     </div>
     <div class="cols even">
       <div class="card"><div class="hd"><h3>Money position — won deals</h3><span class="note">Paid = SGD actually received</span></div><div class="bd flush">
         <table class="t"><tbody>
-          <tr><td><span class="b st-Awaiting">1 · Awaiting PO</span><div class="small muted" style="margin-top:4px">Open value; deposits already received are counted under Paid</div></td><td class="num"><b>${disp((D.pipeline.find(p => p.stage === 'Awaiting PO') || {}).openSGD || 0)}</b><div class="small muted">${(D.pipeline.find(p => p.stage === 'Awaiting PO') || {}).count || 0} deal(s)</div></td></tr>
+          <tr><td><span class="b st-Awaiting">1 · ${esc(lastOpen.stage)}</span><div class="small muted" style="margin-top:4px">Open value; deposits already received are counted under Paid</div></td><td class="num"><b>${disp(lastOpen.openSGD)}</b><div class="small muted">${lastOpen.count} deal(s)</div></td></tr>
           <tr><td><span class="b st-Formal">2 · Paid, not delivered</span><div class="small muted" style="margin-top:4px">We owe goods — ship</div></td><td class="num"><b>${disp(m.paidNotDelivered)}</b><div class="small muted">${m.counts.paidNotDelivered} deal(s)</div></td></tr>
           <tr><td><span class="b st-Paid">3 · Paid and delivered</span><div class="small muted" style="margin-top:4px">Done</div></td><td class="num"><b>${disp(m.paidDelivered)}</b><div class="small muted">${m.counts.paidDelivered} deal(s)</div></td></tr>
           <tr><td><span class="b st-Lost">4 · Delivered, not paid</span><div class="small muted" style="margin-top:4px">Goods shipped, payment still due</div></td><td class="num"><b>${disp(m.unpaidDelivered)}</b><div class="small muted">${m.counts.unpaidDelivered} deal(s)</div></td></tr>
-        </tbody></table>
-        </div></div>
+        </tbody></table></div></div>
       <div class="card"><div class="hd"><h3>Why deals are lost</h3><span class="note">Feeds the pricing question</span></div><div class="bd">${lost}</div></div>
     </div>
     <div class="cols even">
@@ -510,7 +610,7 @@ function viewDashboard() {
       <div class="card"><div class="hd"><h3>Products — enquired vs won (quantity)</h3><span class="note">From deal line items</span></div><div class="bd flush tablewrap">${prodRows ? `<table class="t"><thead><tr><th>Product</th><th class="num">Deals</th><th class="num">Enquired</th><th class="num">Won</th><th class="num">Open</th><th class="num">Lost</th><th class="num">Win</th></tr></thead><tbody>${prodRows}</tbody></table>` : '<div class="empty">Add line items to deals to see this.</div>'}</div></div>
       <div class="card"><div class="hd"><h3>Win rate by application</h3></div><div class="bd flush tablewrap">${winTable(D.byApplication, 'Application')}</div></div>
     </div>
-    <div class="faint small">Win rates need at least ${D.minN} decided deals per row before they mean much. Exchange rates: ${cfg.fxRows.map(f => `${esc(f.currency)} ${f.rate}`).join(' · ')} (SGD per unit).</div>`);
+    <div class="faint small">Win rates need at least ${D.minN} decided deals per row before they mean much. Exchange rates: ${cfg.fxRows.map(x => `${esc(x.currency)} ${x.rate}`).join(' · ')} (SGD per unit).</div>`);
 }
 
 /* ======================= Customers ======================= */
@@ -564,7 +664,7 @@ function renderCustomer(id) {
     <div class="dhead"><div>
       <div class="small muted"><a onclick="go('#/customers')">Customers</a> / <span class="mono">${c.CustomerID}</span></div>
       <h1>${esc(c.Name)} ${c.KeyAccount === 'Yes' ? '<span class="b key">★ Key account</span>' : ''}</h1>
-      <div class="row">${tierBadge(c.tier)}<span class="b out">${c.status}</span><span class="b">${esc(c.Segment || 'No segment')}</span><span class="b">${esc(c.Country)}</span>${c.OriginalSource ? `<span class="b" title="How they first found us">First source: ${esc(c.OriginalSource)}</span>` : ''}</div>
+      <div class="row">${tierBadge(c.tier)}<span class="b out">${c.status}</span><span class="b">${esc(c.Segment || 'No segment')}</span><span class="b">${esc(c.Country)}</span><span class="b" title="Region (Settings → Regions)">${esc(c.Region || 'Unassigned')}</span>${c.OriginalSource ? `<span class="b" title="How they first found us">First source: ${esc(c.OriginalSource)}</span>` : ''}</div>
       ${c.KeyAccount === 'Yes' && c.KeyAccountNote ? `<div class="small muted" style="margin-top:8px">★ ${esc(c.KeyAccountNote)}</div>` : ''}
     </div><div class="row">${ed ? `<button class="btn" onclick="customerForm('${id}')">Edit</button><button class="btn" onclick="archiveItem('customer','${id}',${c.Archived !== 'Yes'})">${c.Archived === 'Yes' ? 'Restore' : 'Archive'}</button>${c.Archived !== 'Yes' ? `<button class="btn pri" onclick="dealForm(null,'${id}')">+ New deal</button>` : ''}` : ''}${can('Admin') ? `<button class="btn danger" onclick="deleteCustomerUI('${id}')">Delete</button>` : ''}</div></div>
     ${c.Archived === 'Yes' ? `<div class="alert" style="background:var(--gray-bg);border-color:var(--line)"><b>Archived customer.</b> This customer and all their deals are hidden from lists, dashboard and reminders.${ed ? ` <a onclick="archiveItem('customer','${id}',false)">Restore</a>` : ''}</div>` : ''}
@@ -695,7 +795,7 @@ function wireComposer(ctx) {
     try {
       const dir = $('#cp-dir') ? $('#cp-dir').value : 'From customer';
       const tp = $('#cp-type') ? $('#cp-type').value : 'Email';
-      const r = await gs('api', JSON.stringify({ token: S.token, action: 'summarizeActivity', data: { text: clean, direction: dir, type: tp } }));
+      const r = await gs('api', JSON.stringify({ token: S.token, crm: S.crm, action: 'summarizeActivity', data: { text: clean, direction: dir, type: tp } }));
       if (mySeq !== seq || !$('#cp-sum')) return;
       if (r.ok && r.data && r.data.summary) {
         $('#cp-sum').value = r.data.summary;
@@ -1015,7 +1115,12 @@ function initDraft(sec) {
   if (!sec || sec === 'stages') { D.stages = cfg.stages.map(s => ({ orig: s.name, name: s.name, prob: s.prob, kind: s.kind })); D.stagesRemoved = []; }
   if (!sec || sec === 'list') { D.list = (cfg.lists[D.listName] || []).map(x => ({ orig: x, value: x })); }
   if (!sec || sec === 'products') { D.products = cfg.products.map(p => ({ code: p.code, name: p.name, category: p.category || '', listPriceUSD: p.listPriceUSD, active: p.active, isNew: false })); D.prodRemoved = []; }
-  if (!sec || sec === 'users') { D.users = (S.boot.users || []).map(u => ({ UserID: u.UserID, Name: u.Name, Email: u.Email || '', Role: u.Role, Active: u.Active || 'Yes', Pin: '', Access: u.Access === 'ALL' || !u.Access ? S.boot.crmsAll.map(c => c.id) : String(u.Access).split(','), isNew: false })); }
+  if (!sec || sec === 'regions') {
+    const countries = [...new Set(S.boot.customers.map(c => String(c.Country || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    const regionOf = {}; S.boot.customers.forEach(c => { if (c.Country) regionOf[String(c.Country).trim()] = c.Region; });
+    D.regions = countries.map(c => ({ country: c, region: regionOf[c] === 'Unassigned' ? '' : regionOf[c] }));
+  }
+  if (!sec || sec === 'users') { D.users = (S.boot.users || []).map(u => ({ UserID: u.UserID, Name: u.Name, Email: u.Email || '', Role: u.Role, Active: u.Active || 'Yes', Pin: '', Access: u.Access === 'ALL' || !u.Access ? S.boot.crmsAll.map(c => c.id) : String(u.Access).split(','), isNew: false, prot: u.Role === 'Admin' && u.UserID !== S.boot.me.id })); }
 }
 function dset(sec, i, field, val) { S.draft[sec][i][field] = val; }
 function rowMove(sec, i, dir) { const a = S.draft[sec], j = i + dir; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; rerender(); }
@@ -1035,7 +1140,7 @@ const secBtns = (sec, label) => `<div class="row" style="padding:12px 16px;borde
 const iconBtn = (t, act, title, cls = '') => `<button class="btn sm ghost ${cls}" title="${title}" onclick="${act}">${t}</button>`;
 
 function viewSettings() {
-  const cfg = S.boot.config, admin = can('Admin'), D0 = S.boot.dashboard;
+  const cfg = S.boot.config, admin = can('Admin'), D0 = computeDashboard({});
   if (!S.draft || S.draft.crm !== S.boot.crm.id || !S.draft.fx) initDraft();
   const D = S.draft;
   const actual = {}; D0.pipeline.forEach(p => actual[p.stage] = p);
@@ -1088,11 +1193,18 @@ function viewSettings() {
     ${admin ? `<div class="card" style="margin-bottom:14px"><div class="hd"><h3>Users, roles, PINs & CRM access</h3><span class="note">Shared by all CRMs — one name and PIN per person</span></div><div class="bd flush tablewrap"><table class="t"><thead><tr><th>Name</th><th>Email (reminders)</th><th>Role</th><th>CRM access</th><th>Active</th><th>New PIN</th></tr></thead><tbody>
       ${D.users.map((u, i) => `<tr><td><input class="in" style="min-width:130px" value="${esc(u.Name)}" placeholder="Name" oninput="dset('users',${i},'Name',this.value)">${u.UserID ? `<div class="mono faint small">${u.UserID}</div>` : '<div class="small" style="color:var(--accent)">new</div>'}</td>
         <td><input class="in" type="email" style="min-width:180px" value="${esc(u.Email)}" placeholder="user@company.com" oninput="dset('users',${i},'Email',this.value)"></td>
-        <td><select class="in" style="width:105px" onchange="dset('users',${i},'Role',this.value);rerender()">${opts(['Admin', 'Editor', 'Viewer'], u.Role)}</select></td>
+        <td><select class="in" style="width:105px" ${u.prot ? 'disabled' : ''} onchange="dset('users',${i},'Role',this.value);rerender()">${opts(['Admin', 'Editor', 'Viewer'], u.Role)}</select>${u.prot ? '<div class="small faint">Protected Admin</div>' : ''}</td>
         <td>${u.Role === 'Admin' ? '<span class="small muted">All (Admin)</span>' : S.boot.crmsAll.map(c => `<label class="small" style="display:flex;align-items:center;gap:5px;white-space:nowrap;margin:3px 0"><input type="checkbox" ${u.Access.includes(c.id) ? 'checked' : ''} onchange="const a=S.draft.users[${i}].Access;if(this.checked){if(!a.includes('${c.id}'))a.push('${c.id}')}else{a.splice(a.indexOf('${c.id}'),1)}"> ${esc(c.name)}</label>`).join('')}</td>
-        <td><select class="in" style="width:75px" onchange="dset('users',${i},'Active',this.value)">${opts(['Yes', 'No'], u.Active)}</select></td>
-        <td><input class="in pin" style="width:120px;font-size:14px;letter-spacing:4px" maxlength="6" inputmode="numeric" placeholder="${u.isNew ? '6 digits' : 'keep'}" value="${esc(u.Pin)}" oninput="dset('users',${i},'Pin',this.value)"></td></tr>`).join('')}
-    </tbody></table>${secBtns('users', 'user')}<div class="small muted" style="padding:0 16px 12px">Viewer = read-only (e.g. investors). Editor = add and edit records. Admin = also settings, users and deleting; always sees every CRM. To remove someone, set Active = No (their past entries keep their name).</div></div></div>` : ''}
+        <td><select class="in" style="width:75px" ${u.prot ? 'disabled' : ''} onchange="dset('users',${i},'Active',this.value)">${opts(['Yes', 'No'], u.Active)}</select></td>
+        <td><input class="in pin" style="width:120px;font-size:14px;letter-spacing:4px" maxlength="6" inputmode="numeric" ${u.prot ? 'disabled' : ''} placeholder="${u.isNew ? '6 digits' : u.prot ? 'own PIN only' : 'keep'}" value="${esc(u.Pin)}" oninput="dset('users',${i},'Pin',this.value)"></td></tr>`).join('')}
+    </tbody></table>${secBtns('users', 'user')}<div class="small muted" style="padding:0 16px 12px">Viewer = read-only (e.g. investors). Editor = add and edit records. Admin = also settings, users and deleting; always sees every CRM. To remove someone, set Active = No (their past entries keep their name). Another Admin cannot be removed, demoted or have their PIN changed — only by themselves (or by the owner via the Sheet menu).</div></div></div>` : ''}
+
+    <div class="card" style="margin-bottom:14px"><div class="hd"><h3>Regions</h3><span class="note">Country → region, used for "Sales by region" and "Win rate by region"</span></div><div class="bd flush tablewrap">
+      ${D.regions.length ? `<table class="t"><thead><tr><th>Country (as typed on customers)</th><th>Region</th><th class="num">Customers</th></tr></thead><tbody>
+      ${D.regions.map((r, i) => `<tr><td>${esc(r.country)}</td><td><select class="in" style="width:200px" ${dis} onchange="dset('regions',${i},'region',this.value)">${opts(cfg.regions, r.region, '— not set —')}</select>${!r.region ? ' <span class="b st-Awaiting">not set</span>' : ''}</td><td class="num">${S.boot.customers.filter(c => String(c.Country || '').trim() === r.country).length}</td></tr>`).join('')}
+      </tbody></table>` : '<div class="empty">No customers yet.</div>'}
+      ${admin && D.regions.length ? `<div class="row" style="padding:12px 16px;border-top:1px solid var(--line2)"><span class="small muted">Common countries are filled in automatically. Spelling matters: "USA" and "United States" are separate rows.</span><span style="flex:1"></span><button class="btn sm" onclick="initDraft('regions');rerender()">Discard changes</button><button class="btn pri sm" onclick="saveSection('regions')">Save regions</button></div>` : ''}
+    </div></div>
 
     <div class="card"><div class="hd"><h3>Products</h3><span class="note">Used for line items and product statistics</span></div><div class="bd flush tablewrap"><table class="t"><thead><tr><th>Code</th><th>Name</th><th>Category</th><th class="num">List price (USD)</th><th>Active</th><th></th></tr></thead><tbody>
       ${D.products.map((p, i) => `<tr><td>${p.isNew ? `<input class="in mono" style="width:110px" value="${esc(p.code)}" placeholder="CODE" oninput="dset('products',${i},'code',this.value.toUpperCase())">` : `<span class="mono">${esc(p.code)}</span>`}</td>
@@ -1119,6 +1231,8 @@ async function saveSection(sec) {
     } else if (sec === 'products') {
       if (D.products.some(p => !p.code || !p.name)) throw new Error('Each product needs a code and a name.');
       await call('saveProductsAll', { rows: D.products.map(p => ({ code: p.code, name: p.name, category: p.category, listPriceUSD: p.listPriceUSD, active: p.active })), removed: D.prodRemoved });
+    } else if (sec === 'regions') {
+      await call('saveCountryRegions', { rows: D.regions.filter(r => r.region).map(r => ({ country: r.country, region: r.region })) });
     } else if (sec === 'users') {
       const rows = D.users.filter(u => u.Name.trim());
       for (const u of rows) {
@@ -1126,7 +1240,7 @@ async function saveSection(sec) {
         if (u.Pin && !/^\d{6}$/.test(u.Pin)) throw new Error(`PIN for "${u.Name}" must be exactly 6 digits.`);
         if (u.Role !== 'Admin' && !u.Access.length) throw new Error(`Tick at least one CRM for "${u.Name}".`);
       }
-      await call('saveUsersAll', { rows: rows.map(u => ({ UserID: u.UserID, Name: u.Name.trim(), Email: u.Email, Role: u.Role, Active: u.Active, Pin: u.Pin, Access: u.Role === 'Admin' ? ['ALL'] : u.Access })) });
+      await call('saveUsersAll', { rows: rows.map(u => u.prot ? ({ UserID: u.UserID, Name: u.Name.trim(), Email: u.Email, Role: 'Admin', Active: u.Active, Pin: '' }) : ({ UserID: u.UserID, Name: u.Name.trim(), Email: u.Email, Role: u.Role, Active: u.Active, Pin: u.Pin, Access: u.Role === 'Admin' ? ['ALL'] : u.Access })) });
     }
     initDraft(sec); toast('Saved'); rerender();
   } catch (e) { fail(e); }
